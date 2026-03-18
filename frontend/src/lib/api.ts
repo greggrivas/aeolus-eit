@@ -153,6 +153,32 @@ export const postPredict = (features: Record<string, number>) =>
     body: JSON.stringify({ features }),
   });
 
+export interface SimulationPoint {
+  index: number;
+  time_stamp: string;
+  anomaly_score: number;
+  pred_anomaly: number;
+}
+
+export interface SimulationResult {
+  event_id: number;
+  event_label: string;
+  event_description: string;
+  sample_start_pct: number;
+  threshold: number;
+  total_sampled: number;
+  anomaly_count: number;
+  first_detection_index: number | null;
+  points: SimulationPoint[];
+}
+
+export const fetchSimulation = (n = 150, eventId?: string | number) => {
+  const params = new URLSearchParams({ n: String(n) });
+  if (eventId != null) params.set("event_id", String(eventId));
+  params.set("seed", String(Math.floor(Math.random() * 100000)));
+  return apiFetch<SimulationResult>(`/simulate?${params}`);
+};
+
 export const postChat = (message: string, context?: Record<string, unknown>) =>
   apiFetch<{ response?: string; error?: string }>(`/chat`, {
     method: "POST",
