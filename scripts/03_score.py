@@ -199,6 +199,8 @@ for _, cat_row in catalog.iterrows():
     reliability_alarm = None
     earliness_weight = None
 
+    lead_time_hours = None
+
     if label == "anomaly":
         coverage = compute_coverage(pred_df)
         coverage_values.append(coverage if coverage is not None else 0.0)
@@ -210,6 +212,14 @@ for _, cat_row in catalog.iterrows():
         earliness_weight = compute_earliness(pred_df)
         if earliness_weight is not None:
             earliness_values.append(earliness_weight)
+
+        # Lead time: hours from first detection to end of prediction window
+        pred_df_r = pred_df.reset_index(drop=True)
+        detected_idxs = pred_df_r.index[pred_df_r["pred_anomaly"] == 1].tolist()
+        if detected_idxs:
+            first_ts = pd.Timestamp(pred_df_r.iloc[detected_idxs[0]]["time_stamp"])
+            last_ts = pd.Timestamp(pred_df_r.iloc[-1]["time_stamp"])
+            lead_time_hours = round((last_ts - first_ts).total_seconds() / 3600, 2)
 
     elif label == "normal":
         tn, total = compute_accuracy_contribution(pred_df)
@@ -228,6 +238,7 @@ for _, cat_row in catalog.iterrows():
         "reliability_alarm": bool(reliability_alarm) if reliability_alarm is not None else None,
         "earliness_weight": float(earliness_weight) if earliness_weight is not None else None,
         "has_detection": bool(pred_df["pred_anomaly"].any()) if pred_df is not None else False,
+        "lead_time_hours": lead_time_hours,
     })
 
 # ── Aggregate CARE metrics ─────────────────────────────────────────────────────

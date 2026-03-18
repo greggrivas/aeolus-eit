@@ -77,6 +77,26 @@ export interface EventCareBreakdown {
   reliability_alarm: boolean | null;
   earliness_weight: number | null;
   has_detection: boolean;
+  lead_time_hours: number | null;
+}
+
+export interface AttributionFeature {
+  feature: string;
+  description: string;
+  z_score: number;
+  mean: number;
+  std: number;
+  anomaly_mean_value: number;
+}
+
+export interface EventAttribution {
+  event_id: number;
+  event_label: string;
+  anomaly_point_count: number;
+  total_prediction_rows: number;
+  lead_time_hours: number | null;
+  score_trend: "escalating" | "stable" | "improving" | "no_detections";
+  top_features: AttributionFeature[];
 }
 
 export interface ModelInfo {
@@ -113,6 +133,9 @@ export const fetchTimeseries = (eventId: string | number, feature: string, downs
 
 export const fetchFeatures = (eventId: string | number) =>
   apiFetch<FeatureInfo[]>(`/events/${eventId}/features`);
+
+export const fetchAttribution = (eventId: string | number) =>
+  apiFetch<EventAttribution>(`/events/${eventId}/attribution`);
 
 export const fetchCareScores = () =>
   apiFetch<CareScores>(`/scores/summary`);

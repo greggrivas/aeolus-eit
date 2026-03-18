@@ -50,3 +50,22 @@ class FeatureInfo(BaseModel):
     description: str
     unit: str
     statistics_type: str
+
+
+class AttributionFeature(BaseModel):
+    feature: str
+    description: str
+    z_score: float
+    mean: float
+    std: float
+    anomaly_mean_value: float
+
+
+class EventAttribution(BaseModel):
+    event_id: int
+    event_label: str
+    anomaly_point_count: int
+    total_prediction_rows: int
+    lead_time_hours: Optional[float]
+    score_trend: str  # "escalating" | "stable" | "decreasing" | "no_detections"
+    top_features: list[AttributionFeature]

@@ -23,6 +23,7 @@ class EventCareBreakdown(BaseModel):
     reliability_alarm: Optional[bool]
     earliness_weight: Optional[float]
     has_detection: bool
+    lead_time_hours: Optional[float] = None
 
 
 class PredictionRequest(BaseModel):
