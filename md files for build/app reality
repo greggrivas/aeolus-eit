@@ -1,0 +1,25 @@
+Current Reality
+This UI is NOT useful for a real maintenance person. Here's why:
+What It Shows vs What They Need
+| What We Have | What They Need |
+|--------------|----------------|
+| Historical events that already happened | Real-time alerts - "Turbine X is acting strange NOW" |
+| CARE scores (model evaluation metrics) | Risk scores - "Turbine Y will likely fail in 2 weeks" |
+| Past anomaly detection | Predictions - "Check turbine Z before it fails" |
+The Fundamental Problem
+Our model does Anomaly Detection (detecting that something is already wrong), not Failure Prediction (predicting when something will fail).
+The CARE dataset is for benchmarking anomaly detection algorithms - it's not a real-time monitoring system.
+---
+What Would Make It Useful
+For a maintenance person, you'd need:
+1. Live sensor data stream - Not in our dataset
+2. RUL (Remaining Useful Life) predictions - Different model, different data
+3. Risk scoring per turbine - "Fix this first"
+4. Maintenance scheduling - "Which turbines should we inspect this week?"
+---
+Honest Assessment
+This is a research prototype demonstrating:
+- How to build an anomaly detection benchmark
+- How to train and evaluate models
+- How to create a UI for viewing results
+It's NOT a production maintenance system.
