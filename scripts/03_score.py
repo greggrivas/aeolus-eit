@@ -136,7 +136,7 @@ def compute_reliability(pred_df: pd.DataFrame) -> float | None:
         elif pred == 0 and status == 0:
             criticality = max(0, criticality - 1)  # gradual reset
 
-        if criticality >= 72:
+        if criticality >= 36:
             alarm_triggered = True
             break
 

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchEvents, fetchEvent, fetchTimeseries, fetchFeatures, fetchAttribution, EventSummary, TimeseriesResponse, FeatureInfo, EventAttribution } from "@/lib/api";
+import { fetchEvents, fetchEvent, fetchTimeseries, fetchFeatures, fetchAttribution, fetchSubsystemSignals, EventSummary, TimeseriesResponse, FeatureInfo, EventAttribution, SubsystemSignalsResponse } from "@/lib/api";
 
 export function useEvents(labelFilter = "all") {
   return useQuery<EventSummary[]>({
@@ -36,6 +36,14 @@ export function useEventAttribution(eventId: string | number | null) {
   return useQuery<EventAttribution>({
     queryKey: ["attribution", eventId],
     queryFn: () => fetchAttribution(eventId!),
+    enabled: !!eventId,
+  });
+}
+
+export function useSubsystemSignals(eventId: string | number | null) {
+  return useQuery<SubsystemSignalsResponse>({
+    queryKey: ["subsystems", eventId],
+    queryFn: () => fetchSubsystemSignals(eventId!),
     enabled: !!eventId,
   });
 }

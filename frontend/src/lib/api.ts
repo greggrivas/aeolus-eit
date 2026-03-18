@@ -30,6 +30,7 @@ export interface EventSummary {
   reliability_alarm: boolean | null;
   earliness_weight: number | null;
   has_detection: boolean;
+  lead_time_hours: number | null;
 }
 
 export interface TimeseriesPoint {
@@ -179,9 +180,56 @@ export const fetchSimulation = (n = 150, eventId?: string | number) => {
   return apiFetch<SimulationResult>(`/simulate?${params}`);
 };
 
+export interface WorkOrder {
+  work_order_id: string;
+  generated_at: string;
+  asset_id: number;
+  event_id: number;
+  fault_description: string;
+  urgency: "HIGH" | "MEDIUM" | "LOW";
+  has_model_detection: boolean;
+  lead_time_hours: number | null;
+  top_contributing_sensors: {
+    sensor: string;
+    description: string;
+    z_score: number;
+    normal_mean: number;
+    anomaly_mean: number;
+    deviation_pct: number;
+  }[];
+  recommended_actions: string[];
+  estimated_inspection_hours: number;
+  notes: string;
+}
+
 export const postChat = (message: string, context?: Record<string, unknown>) =>
-  apiFetch<{ response?: string; error?: string }>(`/chat`, {
+  apiFetch<{ response?: string; error?: string; work_order?: WorkOrder }>(`/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message, context }),
   });
+
+export interface SubsystemSignal {
+  key: string;
+  label: string;
+  icon: string;
+  color: string;
+  signal: number;        // 0-1
+  mean_z_score: number;
+  description: string;
+  sensors_checked: number;
+  sensors_available: number;
+  top_sensor: string | null;
+  top_sensor_description: string | null;
+  top_z_score: number | null;
+}
+
+export interface SubsystemSignalsResponse {
+  event_id: number;
+  event_label: string;
+  has_anomaly_rows: boolean;
+  subsystems: SubsystemSignal[];
+}
+
+export const fetchSubsystemSignals = (eventId: string | number) =>
+  apiFetch<SubsystemSignalsResponse>(`/events/${eventId}/subsystems`);

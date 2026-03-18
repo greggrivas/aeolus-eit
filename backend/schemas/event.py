@@ -21,6 +21,7 @@ class EventSummary(BaseModel):
     reliability_alarm: Optional[bool] = None
     earliness_weight: Optional[float] = None
     has_detection: bool = False
+    lead_time_hours: Optional[float] = None
 
 
 class EventDetail(EventSummary):

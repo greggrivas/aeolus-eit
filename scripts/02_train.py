@@ -53,14 +53,14 @@ X_val_scaled = scaler.transform(X_val)
 
 # ── Train Isolation Forest ─────────────────────────────────────────────────────
 print("Training Isolation Forest...")
-model = IsolationForest(n_estimators=100, contamination="auto", random_state=42, n_jobs=-1)
+model = IsolationForest(n_estimators=100, contamination=0.05, random_state=42, n_jobs=-1)
 model.fit(X_train_scaled)
 print("Training complete.")
 
 # ── Threshold: 5th percentile of validation normal scores ─────────────────────
 val_scores = model.score_samples(X_val_scaled)
-threshold = float(np.percentile(val_scores, 5))
-print(f"Anomaly threshold (5th pct of val scores): {threshold:.6f}")
+threshold = float(np.percentile(val_scores, 10))
+print(f"Anomaly threshold (10th pct of val scores): {threshold:.6f}")
 
 # ── Validation FP rate check ──────────────────────────────────────────────────
 val_preds = (val_scores < threshold).astype(int)
@@ -74,7 +74,7 @@ joblib.dump(scaler, MODELS_DIR / "scaler.joblib")
 metadata = {
     "algorithm": "IsolationForest",
     "n_estimators": 100,
-    "contamination": "auto",
+    "contamination": "0.05",
     "random_state": 42,
     "feature_cols": feature_cols,
     "threshold": threshold,

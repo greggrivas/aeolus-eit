@@ -8,6 +8,48 @@ import numpy as np
 
 from ..startup import get_state
 from ..schemas.event import EventSummary, TimeseriesResponse, TimeseriesPoint, FeatureInfo, AttributionFeature, EventAttribution
+from ..schemas.subsystem import SubsystemSignal, SubsystemSignalsResponse
+
+
+SUBSYSTEM_GROUPS: dict[str, dict] = {
+    "gearbox": {
+        "label": "Gearbox",
+        "icon": "settings",
+        "color": "#f59e0b",
+        "sensors": ["sensor_11_avg", "sensor_12_avg"],
+        "description": "Bearing HS temp · Oil temp",
+    },
+    "generator": {
+        "label": "Generator",
+        "icon": "electric_bolt",
+        "color": "#3b82f6",
+        "sensors": ["sensor_13_avg", "sensor_14_avg", "sensor_15_avg", "sensor_16_avg", "sensor_17_avg", "sensor_18_avg"],
+        "description": "Bearings · Stator windings ph.1/2/3 · RPM",
+    },
+    "pitch": {
+        "label": "Pitch System",
+        "icon": "rotate_right",
+        "color": "#10b981",
+        "sensors": ["sensor_5_avg", "sensor_6_avg"],
+        "description": "Pitch angle · Hub controller temp",
+    },
+    "electrical": {
+        "label": "Electrical / Power",
+        "icon": "flash_on",
+        "color": "#8b5cf6",
+        "sensors": ["sensor_23_avg", "sensor_24_avg", "sensor_25_avg",
+                    "sensor_32_avg", "sensor_33_avg", "sensor_34_avg",
+                    "sensor_35_avg", "sensor_36_avg", "sensor_37_avg"],
+        "description": "Current phases · Voltage phases · IGBT temps",
+    },
+    "nacelle": {
+        "label": "Nacelle / Yaw",
+        "icon": "explore",
+        "color": "#06b6d4",
+        "sensors": ["sensor_7_avg", "sensor_42_avg", "sensor_43_avg"],
+        "description": "Top controller temp · Nacelle direction · Nacelle temp",
+    },
+}
 
 
 def _join_care(catalog_row: pd.Series, scores_df: pd.DataFrame) -> dict:
@@ -264,4 +306,89 @@ def get_event_attribution(event_id: str) -> Optional[EventAttribution]:
         lead_time_hours=lead_time_hours,
         score_trend=score_trend,
         top_features=top_features,
+    )
+
+
+def get_subsystem_signals(event_id: str) -> Optional[SubsystemSignalsResponse]:
+    state = get_state()
+    df = state.event_data.get(event_id)
+    if df is None:
+        return None
+
+    catalog_row = state.events_catalog[state.events_catalog["event_id"] == int(event_id)]
+    event_label = str(catalog_row.iloc[0]["event_label"]) if not catalog_row.empty else "unknown"
+
+    pred_df = df[df["train_test"] == "prediction"].copy().reset_index(drop=True)
+    anomaly_rows = pred_df[pred_df["pred_anomaly"] == 1] if "pred_anomaly" in pred_df.columns else pd.DataFrame()
+    has_anomaly_rows = len(anomaly_rows) > 0
+
+    feature_cols = state.model_metadata.get("feature_cols", [])
+    scaler = state.scaler
+    fd = state.feature_description
+
+    # Build lookup: sensor_col → z-score during anomaly rows
+    z_map: dict[str, float] = {}
+    z_desc: dict[str, str] = {}
+    if has_anomaly_rows and scaler is not None and len(feature_cols) > 0:
+        means = scaler.mean_
+        stds = scaler.scale_
+        for i, feat in enumerate(feature_cols):
+            if feat not in anomaly_rows.columns:
+                continue
+            vals = anomaly_rows[feat].dropna()
+            if len(vals) == 0 or stds[i] == 0:
+                continue
+            z_map[feat] = float(abs((vals.mean() - means[i]) / stds[i]))
+            # description lookup
+            sensor_base = feat.replace("_avg", "").replace("_max", "").replace("_min", "").replace("_std", "")
+            desc = feat
+            if len(fd) > 0:
+                match = fd[fd["sensor_name"] == sensor_base]
+                if not match.empty:
+                    desc = str(match.iloc[0].get("description", feat))
+            z_desc[feat] = desc
+
+    subsystems: list[SubsystemSignal] = []
+    for key, grp in SUBSYSTEM_GROUPS.items():
+        sensors_defined = grp["sensors"]
+        sensors_available = [s for s in sensors_defined if s in pred_df.columns]
+        sensors_with_z = [s for s in sensors_available if s in z_map]
+
+        if sensors_with_z:
+            z_scores = [z_map[s] for s in sensors_with_z]
+            mean_z = float(np.mean(z_scores))
+            best_sensor = max(sensors_with_z, key=lambda s: z_map[s])
+            top_z = z_map[best_sensor]
+            top_desc = z_desc.get(best_sensor, best_sensor)
+        else:
+            mean_z = 0.0
+            best_sensor = None
+            top_z = None
+            top_desc = None
+
+        signal = min(1.0, mean_z / 5.0)  # normalise: z=5 → signal=1.0
+
+        subsystems.append(SubsystemSignal(
+            key=key,
+            label=grp["label"],
+            icon=grp["icon"],
+            color=grp["color"],
+            signal=round(signal, 4),
+            mean_z_score=round(mean_z, 3),
+            description=grp["description"],
+            sensors_checked=len(sensors_defined),
+            sensors_available=len(sensors_available),
+            top_sensor=best_sensor,
+            top_sensor_description=top_desc,
+            top_z_score=round(top_z, 3) if top_z is not None else None,
+        ))
+
+    # Sort by signal descending
+    subsystems.sort(key=lambda s: s.signal, reverse=True)
+
+    return SubsystemSignalsResponse(
+        event_id=int(event_id),
+        event_label=event_label,
+        has_anomaly_rows=has_anomaly_rows,
+        subsystems=subsystems,
     )

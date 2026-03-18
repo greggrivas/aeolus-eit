@@ -21,6 +21,18 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 NORMAL_STATUS_IDS = {0, 2}
 
+# Rolling feature config — adds temporal context for key sensors
+# 10-min intervals × 36 = 6-hour window
+ROLL_WINDOW = 36
+ROLLING_SENSORS = [
+    "sensor_5_avg",   # Pitch angle
+    "sensor_11_avg",  # Gearbox bearing HS temp
+    "sensor_12_avg",  # Gearbox oil temp
+    "sensor_13_avg",  # Generator bearing DE temp
+    "sensor_14_avg",  # Generator bearing NDE temp
+    "power_30_avg",   # Grid power (normalized)
+]
+
 # ── Load metadata ──────────────────────────────────────────────────────────────
 event_info = pd.read_csv(RAW_DIR / "event_info.csv", sep=";")
 feature_desc = pd.read_csv(RAW_DIR / "feature_description.csv", sep=";")
@@ -44,6 +56,13 @@ for _, row in event_info.iterrows():
 
     # Derive sensor columns from this df
     sensor_cols = [c for c in df.columns if c not in NON_SENSOR_COLS]
+
+    # ── Rolling features (6-hour window = 36 × 10-min intervals) ──────────────
+    for col in ROLLING_SENSORS:
+        if col in df.columns:
+            df[f"{col}_roll_mean"] = df[col].rolling(ROLL_WINDOW, min_periods=1).mean()
+            df[f"{col}_roll_std"]  = df[col].rolling(ROLL_WINDOW, min_periods=1).std().fillna(0)
+            df[f"{col}_roll_roc"]  = df[col].diff(ROLL_WINDOW).fillna(0)  # rate of change over window
 
     # ── Enrich with event metadata ─────────────────────────────────────────────
     df["event_id"] = int(event_id)
