@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchEvents, fetchEvent, fetchTimeseries, fetchFeatures, EventSummary, TimeseriesResponse, FeatureInfo } from "@/lib/api";
+import { fetchEvents, fetchEvent, fetchTimeseries, fetchFeatures, fetchAttribution, EventSummary, TimeseriesResponse, FeatureInfo, EventAttribution } from "@/lib/api";
 
 export function useEvents(labelFilter = "all") {
   return useQuery<EventSummary[]>({
@@ -28,6 +28,14 @@ export function useEventFeatures(eventId: string | number | null) {
   return useQuery<FeatureInfo[]>({
     queryKey: ["features", eventId],
     queryFn: () => fetchFeatures(eventId!),
+    enabled: !!eventId,
+  });
+}
+
+export function useEventAttribution(eventId: string | number | null) {
+  return useQuery<EventAttribution>({
+    queryKey: ["attribution", eventId],
+    queryFn: () => fetchAttribution(eventId!),
     enabled: !!eventId,
   });
 }

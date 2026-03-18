@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useEventDetail, useSensorData, useEventFeatures } from "@/hooks/useEvents";
+import { useEventDetail, useSensorData, useEventFeatures, useEventAttribution } from "@/hooks/useEvents";
 import { useAeolusStore } from "@/store/useAeolusStore";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import Link from "next/link";
@@ -32,6 +32,7 @@ export default function EventDetailPage() {
   const { data: event, isLoading: eventLoading } = useEventDetail(eventId);
   const { data: timeseries, isLoading: tsLoading } = useSensorData(eventId, selectedFeature, 500);
   const { data: features } = useEventFeatures(eventId);
+  const { data: attribution } = useEventAttribution(eventId);
 
   // Build chart data from timeseries
   const chartData = useMemo(() => {
@@ -74,7 +75,7 @@ export default function EventDetailPage() {
   const isAnomaly = event.event_label === "anomaly";
 
   return (
-    <div className="flex flex-col h-full p-5 gap-5 overflow-y-auto">
+    <div className="flex flex-col p-5 gap-5">
       {/* Breadcrumb + header */}
       <div>
         <div className="flex items-center gap-2 text-sm text-slate-500 mb-3">
@@ -125,7 +126,7 @@ export default function EventDetailPage() {
       </div>
 
       {/* Main chart + features sidebar */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* Chart */}
         <div className="lg:col-span-8 bg-panel-dark border border-border-dark rounded-xl p-5 flex flex-col">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
@@ -196,7 +197,7 @@ export default function EventDetailPage() {
             </div>
             <span className="material-symbols-outlined text-slate-500">filter_list</span>
           </div>
-          <div className="overflow-y-auto flex-1">
+          <div className="overflow-y-auto max-h-[420px]">
             <table className="w-full text-left text-sm">
               <thead className="bg-background-dark/50 sticky top-0">
                 <tr>
@@ -234,6 +235,104 @@ export default function EventDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Fault Attribution */}
+      {attribution && attribution.anomaly_point_count > 0 && (
+        <div className="bg-panel-dark border border-border-dark rounded-xl overflow-hidden">
+          <div className="p-4 border-b border-border-dark flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary">crisis_alert</span>
+              <div>
+                <h4 className="text-sm font-bold">Fault Attribution</h4>
+                <p className="text-xs text-slate-500">Top contributing sensors during anomaly detections</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap justify-end">
+              {attribution.lead_time_hours != null && (
+                <div className="flex items-center gap-1.5 bg-amber-900/20 border border-amber-700/30 text-amber-400 px-3 py-1.5 rounded-lg">
+                  <span className="material-symbols-outlined text-base">alarm</span>
+                  <span className="text-xs font-bold">{attribution.lead_time_hours.toFixed(0)}h lead time</span>
+                </div>
+              )}
+              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold ${
+                attribution.score_trend === "escalating"
+                  ? "bg-red-900/20 border-red-700/30 text-red-400"
+                  : attribution.score_trend === "improving"
+                  ? "bg-emerald-900/20 border-emerald-700/30 text-emerald-400"
+                  : "bg-slate-800/50 border-border-dark text-slate-400"
+              }`}>
+                <span className="material-symbols-outlined text-base">
+                  {attribution.score_trend === "escalating" ? "trending_up" : attribution.score_trend === "improving" ? "trending_down" : "trending_flat"}
+                </span>
+                {attribution.score_trend.toUpperCase()}
+              </div>
+              <div className="text-xs text-slate-500">
+                {attribution.anomaly_point_count} / {attribution.total_prediction_rows} rows flagged
+              </div>
+            </div>
+          </div>
+
+          <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Z-score bar chart */}
+            <Plot
+              data={[{
+                type: "bar",
+                orientation: "h",
+                x: [...attribution.top_features].reverse().map((f) => f.z_score),
+                y: [...attribution.top_features].reverse().map((f) => f.description.length > 35 ? f.description.slice(0, 35) + "…" : f.description),
+                marker: {
+                  color: [...attribution.top_features].reverse().map((f) =>
+                    f.z_score >= 3 ? "#ef4444" : f.z_score >= 2 ? "#f59e0b" : "#3b82f6"
+                  ),
+                },
+                text: [...attribution.top_features].reverse().map((f) => `${f.z_score.toFixed(2)}σ`),
+                textposition: "outside" as const,
+                textfont: { color: "#94a3b8", size: 10 },
+              }]}
+              layout={{
+                paper_bgcolor: "#1a2233",
+                plot_bgcolor: "#1a2233",
+                xaxis: { title: { text: "Z-score (σ from training mean)", font: { color: "#64748b", size: 10 } }, gridcolor: "#2d3a54", tickfont: { color: "#64748b", size: 9 }, zeroline: false },
+                yaxis: { tickfont: { color: "#94a3b8", size: 10 }, automargin: true },
+                margin: { l: 8, r: 60, t: 10, b: 40 },
+                height: 300,
+                shapes: [{ type: "line", x0: 2, x1: 2, y0: -0.5, y1: attribution.top_features.length - 0.5, yref: "y", xref: "x", line: { color: "#f59e0b", width: 1, dash: "dot" } }],
+              } as Partial<Layout>}
+              config={{ responsive: true, displayModeBar: false }}
+              style={{ width: "100%" }}
+            />
+
+            {/* Attribution table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border-dark text-slate-500 uppercase tracking-wider">
+                    <th className="text-left pb-2">Sensor</th>
+                    <th className="text-right pb-2">Observed</th>
+                    <th className="text-right pb-2">Normal mean</th>
+                    <th className="text-right pb-2">Z-score</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-dark/50">
+                  {attribution.top_features.map((f) => (
+                    <tr key={f.feature} className="hover:bg-white/[0.02]">
+                      <td className="py-2 pr-3">
+                        <div className="font-medium text-slate-300 truncate max-w-[160px]" title={f.description}>{f.description}</div>
+                        <div className="text-slate-600 font-mono">{f.feature}</div>
+                      </td>
+                      <td className="py-2 text-right font-mono text-slate-200">{f.anomaly_mean_value.toFixed(2)}</td>
+                      <td className="py-2 text-right font-mono text-slate-500">{f.mean.toFixed(2)}</td>
+                      <td className={`py-2 text-right font-bold ${f.z_score >= 3 ? "text-red-400" : f.z_score >= 2 ? "text-amber-400" : "text-slate-400"}`}>
+                        {f.z_score.toFixed(2)}σ
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CARE scores + log section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
