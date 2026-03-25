@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { fetchModelInfo, postPredict, postChat, ModelInfo } from "@/lib/api";
+import { fetchModelInfo, postPredict, postChat, ModelInfo, RFModelInfo } from "@/lib/api";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { useAeolusStore } from "@/store/useAeolusStore";
 import { useState, useRef, useEffect } from "react";
@@ -63,7 +63,7 @@ export default function ModelPage() {
     addChatMessage({ role: "user", content: msg });
     setChatLoading(true);
     try {
-      const res = await postChat(msg, { model_algorithm: info?.algorithm, model_care_threshold: info?.threshold });
+      const res = await postChat(msg, { model_algorithm: info?.isolation_forest?.algorithm, model_care_threshold: info?.isolation_forest?.threshold });
       if (res.error === "chat_not_configured") {
         setChatDisabled(true);
         addChatMessage({ role: "assistant", content: "Chat is not configured. Set OPENROUTER_API_KEY in the backend .env to enable AI responses." });
@@ -84,30 +84,97 @@ export default function ModelPage() {
             <span className="material-symbols-outlined text-sm">science</span>
             MODEL INFO & VALIDATION
           </div>
-          <h2 className="text-2xl font-bold tracking-tight">Isolation Forest</h2>
+          <h2 className="text-2xl font-bold tracking-tight">Predictive Models</h2>
         </div>
 
         {isLoading && <LoadingSpinner />}
 
         {info && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 rounded-xl border border-border-dark bg-panel-dark">
-                <p className="text-slate-500 text-xs font-bold uppercase mb-1">Architecture</p>
-                <p className="text-lg font-semibold">{info.algorithm}</p>
-                <div className="mt-2 text-xs py-1 px-2 bg-primary/10 text-primary rounded inline-block">{info.n_estimators} estimators</div>
+            {/* Isolation Forest */}
+            <div className="flex flex-col gap-3">
+              <h3 className="text-sm font-bold uppercase text-slate-400 flex items-center gap-2">
+                <span className="material-symbols-outlined text-sm text-amber-400">forest</span>
+                Isolation Forest <span className="text-slate-600 font-normal normal-case text-xs">(unsupervised baseline)</span>
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 rounded-xl border border-border-dark bg-panel-dark">
+                  <p className="text-slate-500 text-xs font-bold uppercase mb-1">Architecture</p>
+                  <p className="text-lg font-semibold">{info.isolation_forest.algorithm}</p>
+                  <div className="mt-2 text-xs py-1 px-2 bg-primary/10 text-primary rounded inline-block">{info.isolation_forest.n_estimators} estimators</div>
+                </div>
+                <div className="p-4 rounded-xl border border-border-dark bg-panel-dark">
+                  <p className="text-slate-500 text-xs font-bold uppercase mb-1">Val FP Rate</p>
+                  <p className="text-2xl font-bold">{(info.isolation_forest.val_fp_rate * 100).toFixed(1)}%</p>
+                  <p className="text-xs text-slate-500 mt-1">5th percentile threshold</p>
+                </div>
+                <div className="p-4 rounded-xl border border-border-dark bg-panel-dark">
+                  <p className="text-slate-500 text-xs font-bold uppercase mb-1">Features</p>
+                  <p className="text-2xl font-bold">{info.isolation_forest.feature_count}</p>
+                  <p className="text-xs text-slate-500 mt-1">{info.isolation_forest.train_rows.toLocaleString()} train rows</p>
+                </div>
               </div>
-              <div className="p-4 rounded-xl border border-border-dark bg-panel-dark">
-                <p className="text-slate-500 text-xs font-bold uppercase mb-1">Val FP Rate</p>
-                <p className="text-2xl font-bold">{(info.val_fp_rate * 100).toFixed(1)}%</p>
-                <p className="text-xs text-slate-500 mt-1">5th percentile threshold</p>
-              </div>
-              <div className="p-4 rounded-xl border border-border-dark bg-panel-dark">
-                <p className="text-slate-500 text-xs font-bold uppercase mb-1">Features</p>
-                <p className="text-2xl font-bold">{info.feature_count}</p>
-                <p className="text-xs text-slate-500 mt-1">{info.train_rows.toLocaleString()} train rows</p>
+              <div className="p-4 bg-panel-dark border border-border-dark rounded-xl text-xs text-slate-500">
+                <p><span className="text-slate-400">Score meaning:</span> {info.isolation_forest.score_meaning}</p>
+                <p className="mt-1"><span className="text-slate-400">Trained:</span> {new Date(info.isolation_forest.train_date).toLocaleString()}</p>
+                <p className="mt-1"><span className="text-slate-400">Contamination:</span> {info.isolation_forest.contamination} · <span className="text-slate-400">Random state:</span> {info.isolation_forest.random_state}</p>
               </div>
             </div>
+
+            {/* Random Forest */}
+            {info.random_forest && (
+              <div className="flex flex-col gap-3">
+                <h3 className="text-sm font-bold uppercase text-slate-400 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-sm text-emerald-400">account_tree</span>
+                  Random Forest <span className="text-slate-600 font-normal normal-case text-xs">(supervised · active model)</span>
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="p-4 rounded-xl border border-border-dark bg-panel-dark">
+                    <p className="text-slate-500 text-xs font-bold uppercase mb-1">Train AUC</p>
+                    <p className="text-2xl font-bold text-emerald-400">{info.random_forest.train_auc.toFixed(4)}</p>
+                    <p className="text-xs text-slate-500 mt-1">in-sample</p>
+                  </div>
+                  <div className="p-4 rounded-xl border border-border-dark bg-panel-dark">
+                    <p className="text-slate-500 text-xs font-bold uppercase mb-1">CV AUC</p>
+                    <p className="text-2xl font-bold text-amber-400">{info.random_forest.cv_auc.toFixed(4)}</p>
+                    <p className="text-xs text-slate-500 mt-1">LOEO cross-val</p>
+                  </div>
+                  <div className="p-4 rounded-xl border border-border-dark bg-panel-dark">
+                    <p className="text-slate-500 text-xs font-bold uppercase mb-1">Train Rows</p>
+                    <p className="text-2xl font-bold">{info.random_forest.train_rows.toLocaleString()}</p>
+                    <p className="text-xs text-slate-500 mt-1">{info.random_forest.anomaly_rows.toLocaleString()} anomaly</p>
+                  </div>
+                  <div className="p-4 rounded-xl border border-border-dark bg-panel-dark">
+                    <p className="text-slate-500 text-xs font-bold uppercase mb-1">Config</p>
+                    <p className="text-base font-semibold">{info.random_forest.n_estimators} trees</p>
+                    <p className="text-xs text-slate-500 mt-1">depth {info.random_forest.max_depth} · balanced</p>
+                  </div>
+                </div>
+                {/* Feature importance bar chart */}
+                <div className="bg-panel-dark border border-border-dark rounded-xl overflow-hidden">
+                  <div className="border-b border-border-dark px-5 py-3">
+                    <h4 className="font-bold text-sm flex items-center gap-2">
+                      <span className="material-symbols-outlined text-primary text-sm">bar_chart</span>
+                      Top Feature Importances
+                    </h4>
+                  </div>
+                  <div className="p-4 flex flex-col gap-2">
+                    {info.random_forest.top_features.slice(0, 15).map((f) => (
+                      <div key={f.feature} className="flex items-center gap-3 text-xs">
+                        <span className="w-44 text-slate-400 truncate font-mono">{f.feature}</span>
+                        <div className="flex-1 bg-background-dark rounded-full h-2 overflow-hidden">
+                          <div
+                            className="h-full bg-primary rounded-full"
+                            style={{ width: `${(f.importance / info.random_forest!.top_features[0].importance) * 100}%` }}
+                          />
+                        </div>
+                        <span className="w-14 text-right text-slate-500">{(f.importance * 100).toFixed(2)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="bg-panel-dark border border-border-dark rounded-xl overflow-hidden">
               <div className="border-b border-border-dark px-5 py-4 flex items-center justify-between bg-background-dark/20">
@@ -209,12 +276,6 @@ export default function ModelPage() {
               )}
             </div>
 
-            {/* Model metadata */}
-            <div className="p-4 bg-panel-dark border border-border-dark rounded-xl text-xs text-slate-500">
-              <p><span className="text-slate-400">Score meaning:</span> {info.score_meaning}</p>
-              <p className="mt-1"><span className="text-slate-400">Trained:</span> {new Date(info.train_date).toLocaleString()}</p>
-              <p className="mt-1"><span className="text-slate-400">Contamination:</span> {info.contamination} · <span className="text-slate-400">Random state:</span> {info.random_state}</p>
-            </div>
           </>
         )}
       </section>

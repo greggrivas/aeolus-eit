@@ -11,7 +11,14 @@ router = APIRouter(prefix="/api/model", tags=["model"])
 def get_model_info():
     state = get_state()
     meta = dict(state.model_metadata)
-    # Don't return the full feature list in info endpoint (too large)
     feature_count = len(meta.pop("feature_cols", []))
     meta["feature_count"] = feature_count
-    return meta
+
+    result = {"isolation_forest": meta}
+
+    if state.rf_metadata:
+        rf = dict(state.rf_metadata)
+        rf.pop("feature_cols", None)
+        result["random_forest"] = rf
+
+    return result

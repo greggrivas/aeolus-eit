@@ -6,6 +6,27 @@ import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { useRouter } from "next/navigation";
 import { clsx } from "clsx";
 
+const FAULT_TYPE_STYLES: Record<string, { bg: string; text: string; border: string; icon: string }> = {
+  hydraulic:   { bg: "bg-sky-900/40",    text: "text-sky-400",    border: "border-sky-800/50",    icon: "water_drop" },
+  gearbox:     { bg: "bg-amber-900/40",  text: "text-amber-400",  border: "border-amber-800/50",  icon: "settings" },
+  generator:   { bg: "bg-emerald-900/40",text: "text-emerald-400",border: "border-emerald-800/50",icon: "electric_bolt" },
+  transformer: { bg: "bg-violet-900/40", text: "text-violet-400", border: "border-violet-800/50", icon: "bolt" },
+  pitch:       { bg: "bg-cyan-900/40",   text: "text-cyan-400",   border: "border-cyan-800/50",   icon: "rotate_right" },
+};
+
+function FaultTypeBadge({ faultType, confidence }: { faultType: string | null; confidence?: number | null }) {
+  if (!faultType) return null;
+  const s = FAULT_TYPE_STYLES[faultType] ?? { bg: "bg-slate-800", text: "text-slate-400", border: "border-slate-700", icon: "help" };
+  const isInferred = confidence != null && confidence < 1.0;
+  return (
+    <span className={clsx("inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wide", s.bg, s.text, s.border)}>
+      <span className="material-symbols-outlined text-[11px]">{s.icon}</span>
+      {faultType}
+      {confidence != null && confidence < 1.0 && <span className="opacity-60 normal-case font-normal">{(confidence * 100).toFixed(0)}%</span>}
+    </span>
+  );
+}
+
 function formatDate(s: string) {
   return new Date(s).toLocaleDateString("en-GB", {
     day: "2-digit", month: "short", year: "numeric",
@@ -71,6 +92,7 @@ export default function EventsPage() {
               <tr>
                 <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Event ID</th>
                 <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Label</th>
+                <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Fault Type</th>
                 <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Description</th>
                 <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Asset</th>
                 <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Start</th>
@@ -83,7 +105,7 @@ export default function EventsPage() {
             <tbody className="divide-y divide-border-dark">
               {isLoading && (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center">
+                  <td colSpan={10} className="py-12 text-center">
                     <LoadingSpinner className="mx-auto" />
                   </td>
                 </tr>
@@ -104,6 +126,12 @@ export default function EventsPage() {
                     )}>
                       {ev.event_label}
                     </span>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <FaultTypeBadge faultType={ev.fault_type} confidence={ev.fault_type_confidence} />
+                    {!ev.fault_type && ev.event_label === "normal" && (
+                      <span className="text-xs text-slate-600">—</span>
+                    )}
                   </td>
                   <td className="px-5 py-3.5 text-sm text-slate-400 max-w-[180px] truncate">
                     {ev.event_description || "—"}

@@ -7,6 +7,7 @@ from fastapi import APIRouter
 
 from ..startup import get_state
 from ..schemas.fleet import AssetOverview, FleetKpis, FleetOverviewResponse
+from ..services.data_service import _pred_col, _score_col
 
 router = APIRouter(prefix="/api/fleet", tags=["fleet"])
 
@@ -57,8 +58,9 @@ def get_fleet_overview() -> FleetOverviewResponse:
             eid = str(int(row["event_id"]))
             if eid in event_data:
                 df = event_data[eid]
-                # prediction rows: those without NaN anomaly_score (model ran on them)
-                pred_df = df[df["anomaly_score"].notna()] if "anomaly_score" in df.columns else df
+                # prediction rows: those scored by the model
+                sc = _score_col(df)
+                pred_df = df[df[sc].notna()] if sc in df.columns else df
                 all_pred_rows.append(pred_df)
 
         availability_pct: float | None = None
@@ -74,9 +76,10 @@ def get_fleet_overview() -> FleetOverviewResponse:
                 availability_pct = float((combined["status_type_id"] == 0).sum() / len(combined) * 100)
 
             # Power deficit
-            if "power_30_avg" in combined.columns and "pred_anomaly" in combined.columns:
-                fault_mask = combined["pred_anomaly"] == 1
-                normal_mask = combined["pred_anomaly"] == 0
+            pc = _pred_col(combined)
+            if "power_30_avg" in combined.columns and pc in combined.columns:
+                fault_mask = combined[pc] == 1
+                normal_mask = combined[pc] == 0
                 fault_power = combined.loc[fault_mask, "power_30_avg"].dropna()
                 normal_power = combined.loc[normal_mask, "power_30_avg"].dropna()
                 if len(fault_power) > 0 and len(normal_power) > 0:
@@ -104,6 +107,23 @@ def get_fleet_overview() -> FleetOverviewResponse:
             health_state = "warning"
         else:
             health_state = "healthy"
+
+        # Trend slope: linear regression of anomaly_score over last 500 prediction rows
+        # Negative slope = scores dropping toward more anomalous (degrading)
+        trend_slope: float | None = None
+        if all_pred_rows:
+            combined_for_trend = pd.concat(all_pred_rows, ignore_index=True)
+            if "anomaly_score" in combined_for_trend.columns and "time_stamp" in combined_for_trend.columns:
+                trend_df = (
+                    combined_for_trend[combined_for_trend["anomaly_score"].notna()]
+                    .sort_values("time_stamp")
+                    .tail(500)
+                )
+                if len(trend_df) >= 10:
+                    x = np.arange(len(trend_df), dtype=float)
+                    y = trend_df["anomaly_score"].values
+                    slope = float(np.polyfit(x, y, 1)[0])
+                    trend_slope = round(slope, 8)
 
         # Avg lead time: mean lead_time_hours for detected anomaly events of this asset
         asset_event_ids = asset_catalog["event_id"].tolist()
@@ -139,6 +159,7 @@ def get_fleet_overview() -> FleetOverviewResponse:
             avg_power_normal=avg_power_normal,
             avg_lead_time_hours=avg_lead_time_hours,
             mtbf_days=mtbf_days,
+            trend_slope=trend_slope,
         ))
 
     # Fleet KPIs
@@ -167,14 +188,17 @@ def get_fleet_overview() -> FleetOverviewResponse:
         eid_str = str(int(eid))
         if eid_str in event_data:
             df = event_data[eid_str]
-            if "pred_anomaly" in df.columns:
-                pred_df = df[df["anomaly_score"].notna()] if "anomaly_score" in df.columns else df
-                normal_pred_rows.append(pred_df[["pred_anomaly"]])
+            pc = _pred_col(df)
+            sc = _score_col(df)
+            if pc in df.columns:
+                pred_df = df[df[sc].notna()] if sc in df.columns else df
+                normal_pred_rows.append(pred_df[[pc]])
     if normal_pred_rows:
         combined_normal = pd.concat(normal_pred_rows, ignore_index=True)
         total_normal = len(combined_normal)
         if total_normal > 0:
-            false_positives = int((combined_normal["pred_anomaly"] == 1).sum())
+            pc_col = combined_normal.columns[0]
+            false_positives = int((combined_normal[pc_col] == 1).sum())
             false_alarm_rate_pct = float(false_positives / total_normal * 100)
 
     lead_time_values = [a.avg_lead_time_hours for a in assets if a.avg_lead_time_hours is not None]

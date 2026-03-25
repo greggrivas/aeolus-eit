@@ -114,6 +114,27 @@ function TurbineCard({ asset }: { asset: AssetOverview }) {
           {asset.fault_events} fault{asset.fault_events !== 1 ? "s" : ""} &middot; {asset.detected} detected
         </p>
       )}
+      {asset.trend_slope != null && (
+        <div className="mt-1.5 flex items-center justify-center gap-1">
+          <span
+            className={clsx(
+              "material-symbols-outlined text-sm",
+              asset.trend_slope < -0.000005
+                ? "text-red-400"
+                : asset.trend_slope > 0.000005
+                ? "text-emerald-400"
+                : "text-slate-500"
+            )}
+          >
+            {asset.trend_slope < -0.000005
+              ? "trending_down"
+              : asset.trend_slope > 0.000005
+              ? "trending_up"
+              : "trending_flat"}
+          </span>
+          <span className="text-[9px] text-slate-600">trend</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -275,6 +296,7 @@ export default function FleetOverviewPage() {
                     <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Power Deficit</th>
                     <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Lead Time</th>
                     <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">MTBF</th>
+                    <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Trend</th>
                     <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Action</th>
                   </tr>
                 </thead>
@@ -353,6 +375,28 @@ export default function FleetOverviewPage() {
                             {asset.mtbf_days != null
                               ? asset.mtbf_days.toFixed(1) + "d"
                               : "—"}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            {asset.trend_slope != null ? (
+                              <span
+                                className={clsx(
+                                  "material-symbols-outlined text-lg",
+                                  asset.trend_slope < -0.000005
+                                    ? "text-red-400"
+                                    : asset.trend_slope > 0.000005
+                                    ? "text-emerald-400"
+                                    : "text-slate-500"
+                                )}
+                              >
+                                {asset.trend_slope < -0.000005
+                                  ? "trending_down"
+                                  : asset.trend_slope > 0.000005
+                                  ? "trending_up"
+                                  : "trending_flat"}
+                              </span>
+                            ) : (
+                              <span className="text-slate-600">—</span>
+                            )}
                           </td>
                           <td className="px-5 py-3.5 text-right">
                             <Link

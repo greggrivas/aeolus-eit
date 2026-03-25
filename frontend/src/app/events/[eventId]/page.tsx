@@ -1,16 +1,37 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useEventDetail, useSensorData, useEventFeatures, useEventAttribution, useSubsystemSignals } from "@/hooks/useEvents";
+import { useEventDetail, useSensorData, useEventFeatures, useEventAttribution, useSubsystemSignals, usePowerCurve } from "@/hooks/useEvents";
 import { useAeolusStore } from "@/store/useAeolusStore";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useMemo, useEffect } from "react";
 import type { Layout, Shape, Data } from "plotly.js";
-import type { EventSummary, EventAttribution, SubsystemSignalsResponse } from "@/lib/api";
+import type { EventSummary, EventAttribution, SubsystemSignalsResponse, PowerCurveResponse } from "@/lib/api";
 
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
+
+const FAULT_TYPE_STYLES: Record<string, { bg: string; text: string; border: string; icon: string }> = {
+  hydraulic:   { bg: "bg-sky-900/40",    text: "text-sky-400",    border: "border-sky-800/50",    icon: "water_drop" },
+  gearbox:     { bg: "bg-amber-900/40",  text: "text-amber-400",  border: "border-amber-800/50",  icon: "settings" },
+  generator:   { bg: "bg-emerald-900/40",text: "text-emerald-400",border: "border-emerald-800/50",icon: "electric_bolt" },
+  transformer: { bg: "bg-violet-900/40", text: "text-violet-400", border: "border-violet-800/50", icon: "bolt" },
+  pitch:       { bg: "bg-cyan-900/40",   text: "text-cyan-400",   border: "border-cyan-800/50",   icon: "rotate_right" },
+};
+
+function FaultTypeBadge({ faultType, confidence }: { faultType: string | null | undefined; confidence?: number | null }) {
+  if (!faultType) return null;
+  const s = FAULT_TYPE_STYLES[faultType] ?? { bg: "bg-slate-800", text: "text-slate-400", border: "border-slate-700", icon: "help" };
+  const isInferred = confidence != null && confidence < 1.0;
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border uppercase tracking-wide ${s.bg} ${s.text} ${s.border}`}>
+      <span className="material-symbols-outlined text-sm">{s.icon}</span>
+      {faultType}
+      {confidence != null && confidence < 1.0 && <span className="opacity-60 normal-case font-normal ml-0.5">{(confidence * 100).toFixed(0)}% conf.</span>}
+    </span>
+  );
+}
 
 function formatDate(s: string) {
   try { return new Date(s).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }); }
@@ -177,6 +198,97 @@ function SubsystemSignals({ data }: { data: SubsystemSignalsResponse }) {
   );
 }
 
+// ── Power Curve Scatter ────────────────────────────────────────────────────────
+function PowerCurveChart({ data }: { data: PowerCurveResponse }) {
+  if (!data.has_power_curve || data.points.length === 0) {
+    return (
+      <div className="bg-panel-dark border border-border-dark rounded-xl p-5 text-sm text-slate-500 italic">
+        Power curve data not available for this event.
+      </div>
+    );
+  }
+
+  const normal = data.points.filter((p) => p.pred_anomaly === 0);
+  const anomaly = data.points.filter((p) => p.pred_anomaly === 1);
+
+  const traces: Data[] = [
+    {
+      x: normal.map((p) => p.wind_speed),
+      y: normal.map((p) => p.actual_power),
+      type: "scatter",
+      mode: "markers",
+      name: "Normal rows",
+      marker: { color: "rgba(16,185,129,0.35)", size: 4 },
+    },
+    {
+      x: anomaly.map((p) => p.wind_speed),
+      y: anomaly.map((p) => p.actual_power),
+      type: "scatter",
+      mode: "markers",
+      name: "Anomaly rows",
+      marker: { color: "rgba(239,68,68,0.5)", size: 4, symbol: "x" },
+    },
+    {
+      x: data.curve_x,
+      y: data.curve_y,
+      type: "scatter",
+      mode: "lines",
+      name: "Expected curve",
+      line: { color: "#facc15", width: 2 },
+    },
+  ];
+
+  const layout: Partial<Layout> = {
+    paper_bgcolor: "transparent",
+    plot_bgcolor: "transparent",
+    font: { color: "#94a3b8", size: 11 },
+    xaxis: { title: "Wind Speed", gridcolor: "#1e293b", zerolinecolor: "#334155" },
+    yaxis: { title: "Active Power (normalised)", gridcolor: "#1e293b", zerolinecolor: "#334155" },
+    legend: { orientation: "h", y: -0.2, font: { size: 11 } },
+    margin: { t: 10, r: 10, b: 60, l: 50 },
+    height: 320,
+  };
+
+  const defNormal = data.mean_deficit_normal;
+  const defAnomaly = data.mean_deficit_anomaly;
+
+  return (
+    <div className="bg-panel-dark border border-border-dark rounded-xl overflow-hidden">
+      <div className="p-4 border-b border-border-dark flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-primary text-base">show_chart</span>
+          <div>
+            <h4 className="text-sm font-bold">Power Curve Deviation</h4>
+            <p className="text-xs text-slate-500">Actual vs expected power for current wind speed — red × = anomaly-flagged rows</p>
+          </div>
+        </div>
+        <div className="flex gap-4 text-xs text-right">
+          {defNormal != null && (
+            <div>
+              <p className="text-slate-500">Normal rows avg</p>
+              <p className={`font-bold tabular-nums ${defNormal < -10 ? "text-amber-400" : "text-slate-300"}`}>
+                {defNormal > 0 ? "+" : ""}{defNormal.toFixed(1)}%
+              </p>
+            </div>
+          )}
+          {defAnomaly != null && (
+            <div>
+              <p className="text-slate-500">Anomaly rows avg</p>
+              <p className={`font-bold tabular-nums ${defAnomaly < -20 ? "text-red-400" : defAnomaly < -10 ? "text-amber-400" : "text-slate-300"}`}>
+                {defAnomaly > 0 ? "+" : ""}{defAnomaly.toFixed(1)}%
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="p-2">
+        <Plot data={traces} layout={layout} config={{ displayModeBar: false, responsive: true }} style={{ width: "100%" }} />
+      </div>
+    </div>
+  );
+}
+
+
 // ── Main page ──────────────────────────────────────────────────────────────────
 export default function EventDetailPage() {
   const { eventId } = useParams<{ eventId: string }>();
@@ -188,6 +300,7 @@ export default function EventDetailPage() {
   const { data: features } = useEventFeatures(eventId);
   const { data: attribution } = useEventAttribution(eventId);
   const { data: subsystemData } = useSubsystemSignals(eventId);
+  const { data: powerCurveData } = usePowerCurve(eventId);
 
   // Auto-select top attributed sensor when attribution loads
   useEffect(() => {
@@ -260,10 +373,13 @@ export default function EventDetailPage() {
           <span className="material-symbols-outlined text-3xl">{isAnomaly ? "warning" : "check_circle"}</span>
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-slate-100">
-            {event.event_description || `Event #${event.event_id}`}
-            <span className="text-slate-500 font-normal ml-2 text-lg">#{event.event_id}</span>
-          </h1>
+          <div className="flex items-center gap-3 flex-wrap mb-1">
+            <h1 className="text-2xl font-bold text-slate-100">
+              {event.event_description || `Event #${event.event_id}`}
+              <span className="text-slate-500 font-normal ml-2 text-lg">#{event.event_id}</span>
+            </h1>
+            {isAnomaly && <FaultTypeBadge faultType={event.fault_type} confidence={event.fault_type_confidence} />}
+          </div>
           <p className="text-slate-500 text-sm mt-1 flex items-center gap-3">
             <span className="flex items-center gap-1"><span className="material-symbols-outlined text-sm">location_on</span> Asset #{event.asset_id}</span>
             <span className="flex items-center gap-1"><span className="material-symbols-outlined text-sm">schedule</span> {formatDate(event.event_start)}</span>
@@ -308,6 +424,9 @@ export default function EventDetailPage() {
           </p>
         </div>
       </div>
+
+      {/* Power Curve Deviation */}
+      {powerCurveData && <PowerCurveChart data={powerCurveData} />}
 
       {/* Timeseries chart + sensor picker */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">

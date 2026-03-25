@@ -31,6 +31,8 @@ export interface EventSummary {
   earliness_weight: number | null;
   has_detection: boolean;
   lead_time_hours: number | null;
+  fault_type: string | null;
+  fault_type_confidence: number | null;
 }
 
 export interface TimeseriesPoint {
@@ -100,7 +102,7 @@ export interface EventAttribution {
   top_features: AttributionFeature[];
 }
 
-export interface ModelInfo {
+export interface IFModelInfo {
   algorithm: string;
   n_estimators: number;
   contamination: string;
@@ -112,6 +114,26 @@ export interface ModelInfo {
   train_date: string;
   score_meaning: string;
   feature_count: number;
+}
+
+export interface RFModelInfo {
+  algorithm: string;
+  n_estimators: number;
+  max_depth: number;
+  min_samples_leaf: number;
+  class_weight: string;
+  feature_count: number;
+  train_rows: number;
+  anomaly_rows: number;
+  normal_rows: number;
+  train_auc: number;
+  cv_auc: number;
+  top_features: { feature: string; importance: number }[];
+}
+
+export interface ModelInfo {
+  isolation_forest: IFModelInfo;
+  random_forest?: RFModelInfo;
 }
 
 export interface PredictionResult {
@@ -234,6 +256,26 @@ export interface SubsystemSignalsResponse {
 export const fetchSubsystemSignals = (eventId: string | number) =>
   apiFetch<SubsystemSignalsResponse>(`/events/${eventId}/subsystems`);
 
+export interface PowerCurvePoint {
+  wind_speed: number;
+  actual_power: number;
+  expected_power: number;
+  pred_anomaly: number;
+}
+
+export interface PowerCurveResponse {
+  event_id: number;
+  points: PowerCurvePoint[];
+  curve_x: number[];
+  curve_y: number[];
+  mean_deficit_normal: number | null;
+  mean_deficit_anomaly: number | null;
+  has_power_curve: boolean;
+}
+
+export const fetchPowerCurve = (eventId: string | number) =>
+  apiFetch<PowerCurveResponse>(`/events/${eventId}/power-curve`);
+
 // ── Fleet Overview ──────────────────────────────────────────────────────────────
 
 export interface AssetOverview {
@@ -249,6 +291,7 @@ export interface AssetOverview {
   avg_power_normal: number | null;
   avg_lead_time_hours: number | null;
   mtbf_days: number | null;
+  trend_slope: number | null;
 }
 
 export interface FleetKpis {

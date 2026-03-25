@@ -7,8 +7,16 @@ import pandas as pd
 import numpy as np
 
 from ..startup import get_state
-from ..schemas.event import EventSummary, TimeseriesResponse, TimeseriesPoint, FeatureInfo, AttributionFeature, EventAttribution
+from ..schemas.event import EventSummary, TimeseriesResponse, TimeseriesPoint, FeatureInfo, AttributionFeature, EventAttribution, PowerCurveResponse, PowerCurvePoint
 from ..schemas.subsystem import SubsystemSignal, SubsystemSignalsResponse
+
+
+# Prefer supervised RF predictions when available, fall back to Isolation Forest
+def _pred_col(df: pd.DataFrame) -> str:
+    return "pred_anomaly_sup" if "pred_anomaly_sup" in df.columns else "pred_anomaly"
+
+def _score_col(df: pd.DataFrame) -> str:
+    return "anomaly_score_sup" if "anomaly_score_sup" in df.columns else "anomaly_score"
 
 
 SUBSYSTEM_GROUPS: dict[str, dict] = {
@@ -52,6 +60,15 @@ SUBSYSTEM_GROUPS: dict[str, dict] = {
 }
 
 
+def _join_fault_type(event_id: int, description: str = "") -> dict:
+    """Return fault type from classifier prediction with confidence score."""
+    state = get_state()
+    fp = state.fault_predictions.get(str(event_id))
+    if fp:
+        return {"fault_type": fp["fault_type"], "fault_type_confidence": fp["confidence"]}
+    return {}
+
+
 def _join_care(catalog_row: pd.Series, scores_df: pd.DataFrame) -> dict:
     """Join CARE scores for a catalog row."""
     eid = catalog_row["event_id"]
@@ -78,6 +95,7 @@ def list_events(label_filter: str = "all") -> list[EventSummary]:
     results = []
     for _, row in catalog.iterrows():
         care_data = _join_care(row, scores)
+        fault_data = _join_fault_type(int(row["event_id"]), str(row.get("event_description", ""))) if str(row["event_label"]) == "anomaly" else {}
         results.append(EventSummary(
             event_id=int(row["event_id"]),
             event_label=str(row["event_label"]),
@@ -91,6 +109,7 @@ def list_events(label_filter: str = "all") -> list[EventSummary]:
             usable_train_rows=int(row["usable_train_rows"]),
             status_dist=str(row.get("status_dist", "{}")),
             **care_data,
+            **fault_data,
         ))
     return results
 
@@ -106,6 +125,7 @@ def get_event(event_id: str) -> Optional[EventSummary]:
 
     row = row_matches.iloc[0]
     care_data = _join_care(row, scores)
+    fault_data = _join_fault_type(int(row["event_id"]), str(row.get("event_description", ""))) if str(row["event_label"]) == "anomaly" else {}
     return EventSummary(
         event_id=int(row["event_id"]),
         event_label=str(row["event_label"]),
@@ -119,6 +139,7 @@ def get_event(event_id: str) -> Optional[EventSummary]:
         usable_train_rows=int(row["usable_train_rows"]),
         status_dist=str(row.get("status_dist", "{}")),
         **care_data,
+        **fault_data,
     )
 
 
@@ -151,14 +172,16 @@ def get_timeseries(event_id: str, feature: str, downsample: int = 500) -> Option
         if not match.empty:
             feat_desc = str(match.iloc[0].get("description", ""))
 
+    sc = _score_col(pred_df)
+    pc = _pred_col(pred_df)
     points = []
     for _, row in pred_df.iterrows():
         fval = float(row[feature]) if feature in row.index and pd.notna(row[feature]) else None
-        ascore = float(row["anomaly_score"]) if "anomaly_score" in row.index and pd.notna(row.get("anomaly_score")) else None
+        ascore = float(row[sc]) if sc in row.index and pd.notna(row.get(sc)) else None
         points.append(TimeseriesPoint(
             time_stamp=str(row["time_stamp"]),
             anomaly_score=ascore,
-            pred_anomaly=int(row.get("pred_anomaly", 0)),
+            pred_anomaly=int(row.get(pc, 0)),
             status_type_id=int(row["status_type_id"]),
             feature_value=fval,
         ))
@@ -231,19 +254,21 @@ def get_event_attribution(event_id: str) -> Optional[EventAttribution]:
     catalog_row = state.events_catalog[state.events_catalog["event_id"] == int(event_id)]
     event_label = str(catalog_row.iloc[0]["event_label"]) if not catalog_row.empty else "unknown"
 
-    anomaly_rows = pred_df[pred_df["pred_anomaly"] == 1]
+    pc = _pred_col(pred_df)
+    sc = _score_col(pred_df)
+    anomaly_rows = pred_df[pred_df[pc] == 1]
     anomaly_point_count = len(anomaly_rows)
 
     # Lead time: hours from first detection to end of prediction window (computed on-the-fly)
     lead_time_hours = None
     if anomaly_point_count > 0:
-        detected_idxs = pred_df.index[pred_df["pred_anomaly"] == 1].tolist()
+        detected_idxs = pred_df.index[pred_df[pc] == 1].tolist()
         first_ts = pd.Timestamp(pred_df.iloc[detected_idxs[0]]["time_stamp"])
         last_ts = pd.Timestamp(pred_df.iloc[-1]["time_stamp"])
         lead_time_hours = round((last_ts - first_ts).total_seconds() / 3600, 2)
 
     # Score trend: compare mean anomaly score of first vs last third of prediction window
-    scores = pred_df["anomaly_score"].dropna().tolist()
+    scores = pred_df[sc].dropna().tolist()
     score_trend = "no_detections"
     if len(scores) >= 6 and anomaly_point_count > 0:
         third = max(1, len(scores) // 3)
@@ -309,6 +334,83 @@ def get_event_attribution(event_id: str) -> Optional[EventAttribution]:
     )
 
 
+def get_power_curve_scatter(event_id: str, max_points: int = 1000) -> Optional[PowerCurveResponse]:
+    state = get_state()
+    df = state.event_data.get(event_id)
+    if df is None:
+        return None
+
+    pca = state.power_curve  # power curve artifact
+    if not pca:
+        return PowerCurveResponse(
+            event_id=int(event_id), points=[], curve_x=[], curve_y=[],
+            mean_deficit_normal=None, mean_deficit_anomaly=None, has_power_curve=False,
+        )
+
+    wind_col = pca.get("wind_col", "wind_speed_3_avg")
+    power_col = pca.get("power_col", "power_30_avg")
+
+    pred_df = df[df["train_test"] == "prediction"].copy()
+    pred_c = _pred_col(pred_df)
+    required = {wind_col, power_col, pred_c, "power_curve_expected"}
+    if not required.issubset(pred_df.columns):
+        return PowerCurveResponse(
+            event_id=int(event_id), points=[], curve_x=[], curve_y=[],
+            mean_deficit_normal=None, mean_deficit_anomaly=None, has_power_curve=False,
+        )
+
+    pred_df = pred_df.dropna(subset=[wind_col, power_col, "power_curve_expected"]).copy()
+    if len(pred_df) == 0:
+        return PowerCurveResponse(
+            event_id=int(event_id), points=[], curve_x=[], curve_y=[],
+            mean_deficit_normal=None, mean_deficit_anomaly=None, has_power_curve=False,
+        )
+
+    # Downsample evenly
+    if len(pred_df) > max_points:
+        step = max(1, len(pred_df) // max_points)
+        pred_df = pred_df.iloc[::step]
+
+    points = [
+        PowerCurvePoint(
+            wind_speed=round(float(r[wind_col]), 3),
+            actual_power=round(float(r[power_col]), 4),
+            expected_power=round(float(r["power_curve_expected"]), 4),
+            pred_anomaly=int(r.get(pred_c, 0)),
+        )
+        for _, r in pred_df.iterrows()
+    ]
+
+    # Smooth fitted curve line from cut-in to max wind speed
+    coeffs = pca.get("coeffs", [])
+    poly_fn = np.poly1d(coeffs)
+    cut_in = pca.get("cut_in_speed", 3.5)
+    max_ws = float(pred_df[wind_col].max())
+    xs = np.linspace(0, min(max_ws + 1, 30), 100)
+    ys = np.where(xs >= cut_in, poly_fn(xs).clip(0, None), 0.0)
+    curve_x = [round(float(x), 2) for x in xs]
+    curve_y = [round(float(y), 4) for y in ys]
+
+    # Mean deficit stats
+    if "power_curve_residual_pct" in pred_df.columns:
+        normal_rows = pred_df[pred_df[pred_c] == 0]["power_curve_residual_pct"].dropna()
+        anomaly_rows = pred_df[pred_df[pred_c] == 1]["power_curve_residual_pct"].dropna()
+        mean_deficit_normal = round(float(normal_rows.mean()), 2) if len(normal_rows) > 0 else None
+        mean_deficit_anomaly = round(float(anomaly_rows.mean()), 2) if len(anomaly_rows) > 0 else None
+    else:
+        mean_deficit_normal = mean_deficit_anomaly = None
+
+    return PowerCurveResponse(
+        event_id=int(event_id),
+        points=points,
+        curve_x=curve_x,
+        curve_y=curve_y,
+        mean_deficit_normal=mean_deficit_normal,
+        mean_deficit_anomaly=mean_deficit_anomaly,
+        has_power_curve=True,
+    )
+
+
 def get_subsystem_signals(event_id: str) -> Optional[SubsystemSignalsResponse]:
     state = get_state()
     df = state.event_data.get(event_id)
@@ -319,7 +421,8 @@ def get_subsystem_signals(event_id: str) -> Optional[SubsystemSignalsResponse]:
     event_label = str(catalog_row.iloc[0]["event_label"]) if not catalog_row.empty else "unknown"
 
     pred_df = df[df["train_test"] == "prediction"].copy().reset_index(drop=True)
-    anomaly_rows = pred_df[pred_df["pred_anomaly"] == 1] if "pred_anomaly" in pred_df.columns else pd.DataFrame()
+    pred_c = _pred_col(pred_df)
+    anomaly_rows = pred_df[pred_df[pred_c] == 1] if pred_c in pred_df.columns else pd.DataFrame()
     has_anomaly_rows = len(anomaly_rows) > 0
 
     feature_cols = state.model_metadata.get("feature_cols", [])

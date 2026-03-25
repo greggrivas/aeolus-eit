@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from ..services.data_service import list_events, get_event, get_timeseries, get_features, get_event_attribution, get_subsystem_signals
-from ..schemas.event import EventSummary, EventDetail, TimeseriesResponse, FeatureInfo, EventAttribution
+from ..services.data_service import list_events, get_event, get_timeseries, get_features, get_event_attribution, get_subsystem_signals, get_power_curve_scatter
+from ..schemas.event import EventSummary, EventDetail, TimeseriesResponse, FeatureInfo, EventAttribution, PowerCurveResponse
 from ..schemas.subsystem import SubsystemSignalsResponse
 
 router = APIRouter(prefix="/api/events", tags=["events"])
@@ -45,6 +45,14 @@ def get_event_features(event_id: str):
 @router.get("/{event_id}/attribution", response_model=EventAttribution)
 def get_attribution(event_id: str):
     result = get_event_attribution(event_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
+    return result
+
+
+@router.get("/{event_id}/power-curve", response_model=PowerCurveResponse)
+def get_power_curve(event_id: str):
+    result = get_power_curve_scatter(event_id)
     if result is None:
         raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
     return result

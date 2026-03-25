@@ -7,7 +7,7 @@ from typing import Optional
 
 import joblib
 import pandas as pd
-from sklearn.ensemble import IsolationForest
+from sklearn.ensemble import IsolationForest, RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 
 from .core.config import settings
@@ -23,6 +23,10 @@ class AeolusState:
     scaler: Optional[StandardScaler] = None
     model_metadata: dict = field(default_factory=dict)
     feature_description: pd.DataFrame = field(default_factory=pd.DataFrame)
+    fault_predictions: dict = field(default_factory=dict)
+    power_curve: dict = field(default_factory=dict)
+    rf_model: Optional[RandomForestClassifier] = None
+    rf_metadata: dict = field(default_factory=dict)
     artifacts_loaded: bool = False
 
 
@@ -66,6 +70,26 @@ def load_artifacts() -> None:
     fd_path = raw_dir / "feature_description.csv"
     if fd_path.exists():
         _state.feature_description = pd.read_csv(fd_path, sep=";")
+
+    # Optional: supervised Random Forest (from 05_supervised.py)
+    rf_path = models_dir / "random_forest.joblib"
+    if rf_path.exists():
+        _state.rf_model = joblib.load(rf_path)
+    rf_meta_path = models_dir / "rf_metadata.json"
+    if rf_meta_path.exists():
+        with open(rf_meta_path) as f:
+            _state.rf_metadata = json.load(f)
+
+    # Optional: fault predictions (from 04_fit_extras.py)
+    fp_path = data_dir / "fault_predictions.json"
+    if fp_path.exists():
+        with open(fp_path) as f:
+            _state.fault_predictions = json.load(f)
+
+    # Optional: power curve model (from 04_fit_extras.py)
+    pc_path = models_dir / "power_curve.joblib"
+    if pc_path.exists():
+        _state.power_curve = joblib.load(pc_path)
 
     _state.artifacts_loaded = True
     print(f"[startup] Loaded {len(_state.event_data)} events, model threshold={_state.model_metadata.get('threshold', 'N/A'):.4f}")

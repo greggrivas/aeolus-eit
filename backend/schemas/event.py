@@ -22,6 +22,9 @@ class EventSummary(BaseModel):
     earliness_weight: Optional[float] = None
     has_detection: bool = False
     lead_time_hours: Optional[float] = None
+    # Fault type (from fault classifier, anomaly events only)
+    fault_type: Optional[str] = None
+    fault_type_confidence: Optional[float] = None
 
 
 class EventDetail(EventSummary):
@@ -60,6 +63,23 @@ class AttributionFeature(BaseModel):
     mean: float
     std: float
     anomaly_mean_value: float
+
+
+class PowerCurvePoint(BaseModel):
+    wind_speed: float
+    actual_power: float
+    expected_power: float
+    pred_anomaly: int
+
+
+class PowerCurveResponse(BaseModel):
+    event_id: int
+    points: list[PowerCurvePoint]
+    curve_x: list[float]   # smooth fitted curve x-values
+    curve_y: list[float]   # smooth fitted curve y-values
+    mean_deficit_normal: Optional[float]   # mean residual_pct for normal rows
+    mean_deficit_anomaly: Optional[float]  # mean residual_pct for anomaly rows
+    has_power_curve: bool
 
 
 class EventAttribution(BaseModel):

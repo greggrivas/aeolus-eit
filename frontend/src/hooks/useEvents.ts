@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchEvents, fetchEvent, fetchTimeseries, fetchFeatures, fetchAttribution, fetchSubsystemSignals, EventSummary, TimeseriesResponse, FeatureInfo, EventAttribution, SubsystemSignalsResponse } from "@/lib/api";
+import { fetchEvents, fetchEvent, fetchTimeseries, fetchFeatures, fetchAttribution, fetchSubsystemSignals, fetchPowerCurve, EventSummary, TimeseriesResponse, FeatureInfo, EventAttribution, SubsystemSignalsResponse, PowerCurveResponse } from "@/lib/api";
 
 export function useEvents(labelFilter = "all") {
   return useQuery<EventSummary[]>({
@@ -44,6 +44,14 @@ export function useSubsystemSignals(eventId: string | number | null) {
   return useQuery<SubsystemSignalsResponse>({
     queryKey: ["subsystems", eventId],
     queryFn: () => fetchSubsystemSignals(eventId!),
+    enabled: !!eventId,
+  });
+}
+
+export function usePowerCurve(eventId: string | number | null) {
+  return useQuery<PowerCurveResponse>({
+    queryKey: ["power-curve", eventId],
+    queryFn: () => fetchPowerCurve(eventId!),
     enabled: !!eventId,
   });
 }
