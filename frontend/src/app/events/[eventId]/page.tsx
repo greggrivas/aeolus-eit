@@ -1,14 +1,14 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useEventDetail, useSensorData, useEventFeatures, useEventAttribution, useSubsystemSignals, usePowerCurve } from "@/hooks/useEvents";
+import { useEventDetail, useSensorData, useEventFeatures, useEventAttribution, usePowerCurve } from "@/hooks/useEvents";
 import { useAeolusStore } from "@/store/useAeolusStore";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useMemo, useEffect } from "react";
 import type { Layout, Shape, Data } from "plotly.js";
-import type { EventSummary, EventAttribution, SubsystemSignalsResponse, PowerCurveResponse } from "@/lib/api";
+import type { EventSummary, EventAttribution, PowerCurveResponse } from "@/lib/api";
 
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
@@ -114,89 +114,6 @@ function FaultSummary({ event, attribution, anomalyCount }: {
   );
 }
 
-// ── Subsystem Anomaly Signals ──────────────────────────────────────────────────
-function SubsystemSignals({ data }: { data: SubsystemSignalsResponse }) {
-  if (!data.has_anomaly_rows) {
-    return (
-      <div className="bg-panel-dark border border-border-dark rounded-xl overflow-hidden">
-        <div className="p-4 border-b border-border-dark flex items-center gap-2">
-          <span className="material-symbols-outlined text-primary text-base">radar</span>
-          <div>
-            <h4 className="text-sm font-bold">Subsystem Anomaly Signals</h4>
-            <p className="text-xs text-slate-500">Z-score based deviation signal per component group — higher = more anomalous during fault rows</p>
-          </div>
-        </div>
-        <div className="p-5">
-          <p className="text-sm text-slate-500 italic">No anomaly rows detected — subsystem signals require at least one flagged row</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-panel-dark border border-border-dark rounded-xl overflow-hidden">
-      <div className="p-4 border-b border-border-dark flex items-center gap-2">
-        <span className="material-symbols-outlined text-primary text-base">radar</span>
-        <div>
-          <h4 className="text-sm font-bold">Subsystem Anomaly Signals</h4>
-          <p className="text-xs text-slate-500">Z-score based deviation signal per component group — higher = more anomalous during fault rows</p>
-        </div>
-      </div>
-      <div className="p-5 flex flex-col gap-4">
-        {data.subsystems.map((sub) => {
-          const zBadgeClass =
-            sub.mean_z_score >= 3
-              ? "bg-red-900/40 text-red-400"
-              : sub.mean_z_score >= 1.5
-              ? "bg-amber-900/40 text-amber-400"
-              : "bg-slate-800/50 text-slate-500";
-
-          return (
-            <div key={sub.key}>
-              <div className="flex items-center gap-3 mb-1.5">
-                {/* Icon + label */}
-                <span className="material-symbols-outlined text-base shrink-0" style={{ color: sub.color }}>
-                  {sub.icon}
-                </span>
-                <span className="text-sm font-semibold text-slate-200 w-36 shrink-0">{sub.label}</span>
-
-                {/* Progress bar */}
-                <div className="flex-1 bg-slate-800 rounded-full h-2.5 overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{ width: `${(sub.signal * 100).toFixed(1)}%`, backgroundColor: sub.color }}
-                  />
-                </div>
-
-                {/* Signal % */}
-                <span className="text-xs font-bold text-slate-300 w-10 text-right shrink-0">
-                  {sub.signal === 0 && !data.has_anomaly_rows
-                    ? <span className="text-slate-600">No anomaly rows</span>
-                    : `${(sub.signal * 100).toFixed(0)}%`}
-                </span>
-
-                {/* Z-score badge */}
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${zBadgeClass}`}>
-                  {sub.mean_z_score.toFixed(1)}σ
-                </span>
-              </div>
-
-              {/* Description + top sensor */}
-              <div className="ml-[calc(1rem+0.75rem+9rem)] text-[11px] text-slate-600 leading-relaxed">
-                {sub.description}
-                {sub.top_sensor_description && (
-                  <span className="text-slate-500"> · top: <span className="text-slate-400">{sub.top_sensor_description}</span>
-                    {sub.top_z_score != null && <span className={sub.top_z_score >= 3 ? " text-red-400" : sub.top_z_score >= 1.5 ? " text-amber-400" : ""}> ({sub.top_z_score.toFixed(1)}σ)</span>}
-                  </span>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 // ── Power Curve Scatter ────────────────────────────────────────────────────────
 function PowerCurveChart({ data }: { data: PowerCurveResponse }) {
@@ -299,7 +216,6 @@ export default function EventDetailPage() {
   const { data: timeseries, isLoading: tsLoading } = useSensorData(eventId, selectedFeature, 500);
   const { data: features } = useEventFeatures(eventId);
   const { data: attribution } = useEventAttribution(eventId);
-  const { data: subsystemData } = useSubsystemSignals(eventId);
   const { data: powerCurveData } = usePowerCurve(eventId);
 
   // Auto-select top attributed sensor when attribution loads
@@ -631,9 +547,6 @@ export default function EventDetailPage() {
           </div>
         </div>
       )}
-
-      {/* Subsystem Anomaly Signals */}
-      {subsystemData && <SubsystemSignals data={subsystemData} />}
 
       {/* CARE sub-scores */}
       <div className="bg-panel-dark border border-border-dark rounded-xl overflow-hidden">

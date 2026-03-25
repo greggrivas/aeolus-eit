@@ -187,11 +187,13 @@ export interface SimulationResult {
   event_id: number;
   event_label: string;
   event_description: string;
+  asset_id: number | null;
   sample_start_pct: number;
   threshold: number;
   total_sampled: number;
   anomaly_count: number;
   first_detection_index: number | null;
+  fault_zone_start_index: number | null;
   points: SimulationPoint[];
 }
 
@@ -231,6 +233,12 @@ export const postChat = (message: string, context?: Record<string, unknown>) =>
     body: JSON.stringify({ message, context }),
   });
 
+export interface TopSensor {
+  sensor: string;
+  description: string;
+  z_score: number;
+}
+
 export interface SubsystemSignal {
   key: string;
   label: string;
@@ -244,6 +252,9 @@ export interface SubsystemSignal {
   top_sensor: string | null;
   top_sensor_description: string | null;
   top_z_score: number | null;
+  top_sensors: TopSensor[];
+  trend_pct: number | null;
+  history: number[];
 }
 
 export interface SubsystemSignalsResponse {
@@ -292,6 +303,8 @@ export interface AssetOverview {
   avg_lead_time_hours: number | null;
   mtbf_days: number | null;
   trend_slope: number | null;
+  fault_type: string | null;
+  fault_type_confidence: number | null;
 }
 
 export interface FleetKpis {

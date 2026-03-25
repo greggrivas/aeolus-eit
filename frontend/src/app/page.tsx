@@ -6,9 +6,9 @@ import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { EventBadge } from "@/components/events/EventBadge";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useMemo } from "react";
 import type { Layout, Data } from "plotly.js";
-import { fetchSimulation, SimulationResult, EventSummary } from "@/lib/api";
+import type { EventSummary } from "@/lib/api";
 
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
@@ -107,146 +107,6 @@ function computeAssetPriorities(events: EventSummary[]): AssetPriority[] {
   });
 
   return priorities;
-}
-
-// ── Simulation Panel ───────────────────────────────────────────────────────────
-function SimulationPanel() {
-  const [result, setResult] = useState<SimulationResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(0);
-  const animRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  async function runSim() {
-    if (loading) return;
-    setResult(null);
-    setVisibleCount(0);
-    setLoading(true);
-    try {
-      const data = await fetchSimulation(150);
-      setResult(data);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!result) return;
-    setVisibleCount(0);
-    let i = 0;
-    animRef.current = setInterval(() => {
-      i += 3;
-      setVisibleCount(i);
-      if (i >= result.points.length) {
-        clearInterval(animRef.current!);
-        setVisibleCount(result.points.length);
-      }
-    }, 30);
-    return () => { if (animRef.current) clearInterval(animRef.current); };
-  }, [result]);
-
-  const visible = result ? result.points.slice(0, visibleCount) : [];
-  const done = result && visibleCount >= result.points.length;
-
-  const plotData: Data[] = useMemo(() => {
-    if (!visible.length || !result) return [];
-    return [
-      {
-        x: visible.map((p) => p.index),
-        y: visible.map((p) => p.anomaly_score),
-        type: "scatter", mode: "lines", name: "Anomaly score",
-        line: { color: "#1152d4", width: 1.5 },
-        fill: "tozeroy", fillcolor: "rgba(17,82,212,0.05)",
-      },
-      {
-        x: visible.filter((p) => p.pred_anomaly === 1).map((p) => p.index),
-        y: visible.filter((p) => p.pred_anomaly === 1).map((p) => p.anomaly_score),
-        type: "scatter", mode: "markers", name: "Anomaly detected",
-        marker: { color: "#ef4444", size: 5 },
-      },
-    ];
-  }, [visible, result]);
-
-  return (
-    <div className="bg-panel-dark border border-border-dark rounded-xl overflow-hidden">
-      <div className="p-5 border-b border-border-dark flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <span className="material-symbols-outlined text-primary">stream</span>
-          <div>
-            <h2 className="text-base font-bold">Live Stream Simulation</h2>
-            <p className="text-xs text-slate-500">
-              Randomly samples 150 consecutive rows from a historical fault event and runs them through the model — simulating an incoming SCADA data stream
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={runSim}
-          disabled={loading}
-          className="flex items-center gap-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shrink-0"
-        >
-          <span className="material-symbols-outlined text-base">{loading ? "hourglass_empty" : "play_arrow"}</span>
-          {loading ? "Loading..." : result ? "Run Again" : "Run Simulation"}
-        </button>
-      </div>
-
-      {!result && !loading && (
-        <div className="p-10 text-center text-slate-600 text-sm">
-          <span className="material-symbols-outlined text-4xl block mb-2">sensors</span>
-          Click "Run Simulation" to sample a window of historical SCADA readings and watch the model score them in real time
-        </div>
-      )}
-      {loading && <div className="p-10 flex justify-center"><LoadingSpinner /></div>}
-
-      {result && (
-        <div className="p-5">
-          <div className="flex flex-wrap items-center gap-3 mb-4 p-3 bg-background-dark rounded-lg border border-border-dark">
-            <EventBadge label={result.event_label} />
-            <span className="text-sm font-semibold text-slate-300">{result.event_description || `Event #${result.event_id}`}</span>
-            <span className="text-slate-600">·</span>
-            <span className="text-xs text-slate-500">Window at {(result.sample_start_pct * 100).toFixed(0)}% of prediction period</span>
-            <span className="text-slate-600">·</span>
-            <span className="text-xs text-slate-500">{result.total_sampled} rows sampled</span>
-          </div>
-          <Plot
-            data={plotData}
-            layout={{
-              paper_bgcolor: "#1a2233", plot_bgcolor: "#1a2233",
-              font: { color: "#94a3b8", size: 11 },
-              xaxis: { title: { text: "Row index (time steps)", font: { color: "#64748b", size: 10 } }, gridcolor: "#2d3a54", tickfont: { color: "#64748b", size: 9 } },
-              yaxis: { title: { text: "Anomaly score", font: { color: "#64748b", size: 10 } }, gridcolor: "#2d3a54", tickfont: { color: "#64748b", size: 9 } },
-              shapes: [{ type: "line", x0: 0, x1: result.total_sampled, y0: result.threshold, y1: result.threshold, line: { color: "#ef4444", width: 1.5, dash: "dash" } }],
-              annotations: [{ x: result.total_sampled * 0.02, y: result.threshold, text: "Threshold", showarrow: false, font: { color: "#ef4444", size: 10 }, yshift: 8 }],
-              showlegend: true, legend: { bgcolor: "#1a2233", bordercolor: "#2d3a54", font: { color: "#94a3b8", size: 10 }, x: 0.01, y: 0.99 },
-              height: 260, margin: { l: 55, r: 20, t: 15, b: 45 },
-            } as Partial<Layout>}
-            config={{ responsive: true, displayModeBar: false }}
-            style={{ width: "100%" }}
-          />
-          {done && (
-            <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="p-3 bg-background-dark rounded-lg border border-border-dark text-center">
-                <p className="text-xs text-slate-500 mb-1">Rows Scanned</p>
-                <p className="text-xl font-bold text-slate-100">{result.total_sampled}</p>
-              </div>
-              <div className={`p-3 rounded-lg border text-center ${result.anomaly_count > 0 ? "bg-red-900/20 border-red-700/30" : "bg-emerald-900/20 border-emerald-700/30"}`}>
-                <p className="text-xs text-slate-500 mb-1">Anomalies Flagged</p>
-                <p className={`text-xl font-bold ${result.anomaly_count > 0 ? "text-red-400" : "text-emerald-400"}`}>{result.anomaly_count}</p>
-              </div>
-              <div className="p-3 bg-background-dark rounded-lg border border-border-dark text-center">
-                <p className="text-xs text-slate-500 mb-1">Detection Rate</p>
-                <p className="text-xl font-bold text-slate-100">{result.total_sampled > 0 ? ((result.anomaly_count / result.total_sampled) * 100).toFixed(1) : "0"}%</p>
-              </div>
-              <div className={`p-3 rounded-lg border text-center ${result.first_detection_index != null ? "bg-amber-900/20 border-amber-700/30" : "bg-background-dark border-border-dark"}`}>
-                <p className="text-xs text-slate-500 mb-1">First Alert At</p>
-                <p className={`text-xl font-bold ${result.first_detection_index != null ? "text-amber-400" : "text-slate-500"}`}>
-                  {result.first_detection_index != null ? `Row ${result.first_detection_index}` : "None"}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
@@ -514,9 +374,6 @@ export default function DashboardPage() {
           </table>
         </div>
       </div>
-
-      {/* Live Simulation */}
-      <SimulationPanel />
 
       {/* CARE Benchmark */}
       <div className="bg-panel-dark border border-border-dark rounded-xl overflow-hidden">

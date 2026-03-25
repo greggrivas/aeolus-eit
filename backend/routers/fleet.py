@@ -109,20 +109,28 @@ def get_fleet_overview() -> FleetOverviewResponse:
             health_state = "healthy"
 
         # Trend slope: linear regression of anomaly_score over last 500 prediction rows
-        # Negative slope = scores dropping toward more anomalous (degrading)
+        # For RF (anomaly_score_sup, 0-1): positive slope = degrading, negative = improving
+        # For IF (anomaly_score, negative values): negative slope = degrading, positive = improving
+        # Only computed for non-healthy assets — trend is noise on healthy turbines
         trend_slope: float | None = None
-        if all_pred_rows:
+        if all_pred_rows and health_state != "healthy":
             combined_for_trend = pd.concat(all_pred_rows, ignore_index=True)
-            if "anomaly_score" in combined_for_trend.columns and "time_stamp" in combined_for_trend.columns:
+            sc_trend = _score_col(combined_for_trend)
+            if sc_trend in combined_for_trend.columns and "time_stamp" in combined_for_trend.columns:
                 trend_df = (
-                    combined_for_trend[combined_for_trend["anomaly_score"].notna()]
+                    combined_for_trend[combined_for_trend[sc_trend].notna()]
                     .sort_values("time_stamp")
                     .tail(500)
                 )
                 if len(trend_df) >= 10:
                     x = np.arange(len(trend_df), dtype=float)
-                    y = trend_df["anomaly_score"].values
+                    y = trend_df[sc_trend].values
                     slope = float(np.polyfit(x, y, 1)[0])
+                    # Normalise sign: positive = degrading for both score types
+                    # RF scores (0-1): positive slope already means degrading
+                    # IF scores (negative): negative slope means degrading, so invert
+                    if sc_trend == "anomaly_score":
+                        slope = -slope
                     trend_slope = round(slope, 8)
 
         # Avg lead time: mean lead_time_hours for detected anomaly events of this asset
@@ -146,6 +154,18 @@ def get_fleet_overview() -> FleetOverviewResponse:
             diffs = anomaly_starts.diff().dropna().dt.total_seconds() / 86400
             mtbf_days = float(diffs.mean())
 
+        # Fault type: from most recent anomaly event for this asset
+        fault_type: str | None = None
+        fault_type_confidence: float | None = None
+        fault_preds = state.fault_predictions
+        anomaly_event_ids = asset_catalog[asset_catalog["event_label"] == "anomaly"]["event_id"].tolist()
+        for eid in reversed(anomaly_event_ids):
+            key = str(int(eid))
+            if key in fault_preds:
+                fault_type = fault_preds[key].get("fault_type")
+                fault_type_confidence = fault_preds[key].get("confidence")
+                break
+
         assets.append(AssetOverview(
             asset_id=int(asset_id),
             health_state=health_state,
@@ -160,6 +180,8 @@ def get_fleet_overview() -> FleetOverviewResponse:
             avg_lead_time_hours=avg_lead_time_hours,
             mtbf_days=mtbf_days,
             trend_slope=trend_slope,
+            fault_type=fault_type,
+            fault_type_confidence=fault_type_confidence,
         ))
 
     # Fleet KPIs

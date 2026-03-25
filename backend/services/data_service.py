@@ -8,7 +8,7 @@ import numpy as np
 
 from ..startup import get_state
 from ..schemas.event import EventSummary, TimeseriesResponse, TimeseriesPoint, FeatureInfo, AttributionFeature, EventAttribution, PowerCurveResponse, PowerCurvePoint
-from ..schemas.subsystem import SubsystemSignal, SubsystemSignalsResponse
+from ..schemas.subsystem import SubsystemSignal, SubsystemSignalsResponse, TopSensor
 
 
 # Prefer supervised RF predictions when available, fall back to Isolation Forest
@@ -451,6 +451,34 @@ def get_subsystem_signals(event_id: str) -> Optional[SubsystemSignalsResponse]:
                     desc = str(match.iloc[0].get("description", feat))
             z_desc[feat] = desc
 
+    # Build feat_idx_map + means/stds for history bucketing
+    feat_idx_map: dict[str, int] = {}
+    if scaler is not None and len(feature_cols) > 0:
+        means = scaler.mean_
+        stds = scaler.scale_
+        for i, f in enumerate(feature_cols):
+            feat_idx_map[f] = i
+    else:
+        means = np.zeros(0)
+        stds = np.ones(0)
+
+    def _row_signal_for_sensors(df_slice: pd.DataFrame, sensors: list[str]) -> float:
+        """Mean abs z-score for a set of sensors over a dataframe slice."""
+        zs = []
+        for s in sensors:
+            if s not in df_slice.columns or s not in feat_idx_map:
+                continue
+            idx = feat_idx_map[s]
+            if stds[idx] == 0:
+                continue
+            vals = df_slice[s].dropna()
+            if len(vals) == 0:
+                continue
+            zs.append(float(abs(vals.mean() - means[idx]) / stds[idx]))
+        return float(np.mean(zs)) if zs else 0.0
+
+    N_BUCKETS = 16
+
     subsystems: list[SubsystemSignal] = []
     for key, grp in SUBSYSTEM_GROUPS.items():
         sensors_defined = grp["sensors"]
@@ -460,16 +488,42 @@ def get_subsystem_signals(event_id: str) -> Optional[SubsystemSignalsResponse]:
         if sensors_with_z:
             z_scores = [z_map[s] for s in sensors_with_z]
             mean_z = float(np.mean(z_scores))
-            best_sensor = max(sensors_with_z, key=lambda s: z_map[s])
+            ranked = sorted(sensors_with_z, key=lambda s: z_map[s], reverse=True)
+            best_sensor = ranked[0]
             top_z = z_map[best_sensor]
             top_desc = z_desc.get(best_sensor, best_sensor)
+            top_sensors = [
+                TopSensor(sensor=s, description=z_desc.get(s, s), z_score=round(z_map[s], 3))
+                for s in ranked[:3]
+            ]
         else:
             mean_z = 0.0
             best_sensor = None
             top_z = None
             top_desc = None
+            top_sensors = []
 
-        signal = min(1.0, mean_z / 5.0)  # normalise: z=5 → signal=1.0
+        signal = min(1.0, mean_z / 5.0)
+
+        # Trend: compare signal in first half vs second half of prediction rows
+        trend_pct: float | None = None
+        n = len(pred_df)
+        if n >= 10 and sensors_with_z:
+            half = n // 2
+            first_z = _row_signal_for_sensors(pred_df.iloc[:half], sensors_with_z)
+            second_z = _row_signal_for_sensors(pred_df.iloc[half:], sensors_with_z)
+            first_sig = min(1.0, first_z / 5.0)
+            second_sig = min(1.0, second_z / 5.0)
+            trend_pct = round((second_sig - first_sig) * 100, 1)
+
+        # History: 16 buckets across prediction rows
+        history: list[float] = []
+        if n >= N_BUCKETS and sensors_available:
+            bucket_size = n // N_BUCKETS
+            for b in range(N_BUCKETS):
+                chunk = pred_df.iloc[b * bucket_size : (b + 1) * bucket_size]
+                bz = _row_signal_for_sensors(chunk, sensors_available)
+                history.append(round(min(1.0, bz / 5.0), 4))
 
         subsystems.append(SubsystemSignal(
             key=key,
@@ -484,6 +538,9 @@ def get_subsystem_signals(event_id: str) -> Optional[SubsystemSignalsResponse]:
             top_sensor=best_sensor,
             top_sensor_description=top_desc,
             top_z_score=round(top_z, 3) if top_z is not None else None,
+            top_sensors=top_sensors,
+            trend_pct=trend_pct,
+            history=history,
         ))
 
     # Sort by signal descending

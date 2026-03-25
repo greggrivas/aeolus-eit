@@ -52,7 +52,7 @@ export default function BenchmarkPage() {
           <span className="material-symbols-outlined text-sm">leaderboard</span>
           CARE BENCHMARK
         </div>
-        <h2 className="text-2xl font-bold tracking-tight">Wind Farm A — Isolation Forest</h2>
+        <h2 className="text-2xl font-bold tracking-tight">Wind Farm A — Random Forest</h2>
       </div>
 
       {/* Metric cards */}

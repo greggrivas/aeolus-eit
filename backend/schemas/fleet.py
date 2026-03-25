@@ -17,6 +17,8 @@ class AssetOverview(BaseModel):
     avg_lead_time_hours: Optional[float] # mean hours of advance warning across detected events
     mtbf_days: Optional[float]           # mean days between consecutive fault events
     trend_slope: Optional[float]         # slope of anomaly_score over last 500 prediction rows (neg = degrading)
+    fault_type: Optional[str]            # most recent fault type from classifier
+    fault_type_confidence: Optional[float]
 
 
 class FleetKpis(BaseModel):

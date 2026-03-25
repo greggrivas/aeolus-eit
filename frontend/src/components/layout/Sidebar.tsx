@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: "/events", label: "Events", icon: "warning", exact: false },
   { href: "/benchmark", label: "Benchmark", icon: "query_stats", exact: false },
   { href: "/model", label: "Predictive Analytics", icon: "memory", exact: false },
+  { href: "/analytics", label: "Detection Validation", icon: "troubleshoot", exact: false },
 ];
 
 export function Sidebar() {
