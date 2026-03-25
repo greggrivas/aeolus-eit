@@ -233,3 +233,42 @@ export interface SubsystemSignalsResponse {
 
 export const fetchSubsystemSignals = (eventId: string | number) =>
   apiFetch<SubsystemSignalsResponse>(`/events/${eventId}/subsystems`);
+
+// ── Fleet Overview ──────────────────────────────────────────────────────────────
+
+export interface AssetOverview {
+  asset_id: number;
+  health_state: "critical" | "warning" | "healthy";
+  health_score: number;
+  fault_events: number;
+  detected: number;
+  missed: number;
+  availability_pct: number | null;
+  power_deficit_pct: number | null;
+  avg_power_fault: number | null;
+  avg_power_normal: number | null;
+  avg_lead_time_hours: number | null;
+  mtbf_days: number | null;
+}
+
+export interface FleetKpis {
+  total_assets: number;
+  critical: number;
+  warning: number;
+  healthy: number;
+  fleet_availability_pct: number | null;
+  active_alerts: number;
+  assets_needing_maintenance: number;
+  avg_power_deficit_pct: number | null;
+  false_alarm_rate_pct: number | null;
+  fleet_avg_lead_time_hours: number | null;
+  fleet_mtbf_days: number | null;
+}
+
+export interface FleetOverviewResponse {
+  assets: AssetOverview[];
+  kpis: FleetKpis;
+}
+
+export const fetchFleetOverview = () =>
+  apiFetch<FleetOverviewResponse>(`/fleet`);

@@ -6,6 +6,7 @@ import { clsx } from "clsx";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: "dashboard", exact: true },
+  { href: "/fleet", label: "Fleet Overview", icon: "map", exact: false },
   { href: "/events", label: "Events", icon: "warning", exact: false },
   { href: "/benchmark", label: "Benchmark", icon: "query_stats", exact: false },
   { href: "/model", label: "Predictive Analytics", icon: "memory", exact: false },

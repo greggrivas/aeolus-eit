@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .startup import load_artifacts, get_state
-from .routers import events, scores, predict, model, chat, simulate
+from .routers import events, scores, predict, model, chat, simulate, fleet
 
 
 @asynccontextmanager
@@ -36,6 +36,7 @@ app.include_router(predict.router)
 app.include_router(model.router)
 app.include_router(chat.router)
 app.include_router(simulate.router)
+app.include_router(fleet.router)
 
 
 @app.get("/health")
