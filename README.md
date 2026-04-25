@@ -25,7 +25,11 @@ Built as part of the **Experts in Teamwork** course at **NTNU**, in collaboratio
 
 ## My role
 
-I led the technical side of the project — designed and built the full frontend and backend from scratch, trained the machine learning models, and integrated the AI assistant. The EiT course focused on interdisciplinary teamwork, so this sat alongside team coordination and communication work with non-technical teammates.
+I led the technical side of the project, designed the frontend and backend, trained the machine learning models, and integrated the AI assistant.
+
+## Disclaimer
+Built entirely with AI assistance (vibe coded) — due to the time constraints of the EiT course and my background being outside software development, this project was built without prior experience in TypeScript, Next.js, or backend development.
+
 
 ---
 
