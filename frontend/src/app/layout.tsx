@@ -1,9 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { ChatPanel } from "@/components/layout/ChatPanel";
-import { BackendGuard } from "@/components/layout/BackendGuard";
 
 export const metadata: Metadata = {
   title: "Aeolus — Wind Turbine Predictive Maintenance",
@@ -25,15 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="bg-background-dark text-slate-100 min-h-screen font-display">
         <Providers>
-          <div className="flex h-screen overflow-hidden">
-            <Sidebar />
-            <BackendGuard>
-              <main className="flex-1 overflow-y-auto">
-                {children}
-              </main>
-              <ChatPanel />
-            </BackendGuard>
-          </div>
+          {children}
         </Providers>
       </body>
     </html>

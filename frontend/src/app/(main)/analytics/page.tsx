@@ -164,7 +164,7 @@ function LiveSimulation() {
     queryKey: ["simulation", seed, selectedEvent],
     queryFn: ({ queryKey }) => {
       const [, keySeed, keyEvent] = queryKey as [string, number, string | undefined];
-      const params = new URLSearchParams({ n: "150", seed: String(keySeed) });
+      const params = new URLSearchParams({ n: "400", seed: String(keySeed) });
       if (keyEvent) params.set("event_id", keyEvent);
       return fetch(`/api/simulate?${params}`).then((r) => r.json());
     },
@@ -177,10 +177,10 @@ function LiveSimulation() {
 
   // Derived stats
   const firstAlert = result?.first_detection_index;
-  const total = result?.total_sampled ?? 150;
-  const leadTimeRows = firstAlert != null ? total - 1 - firstAlert : null;
-  const leadTimeHours = leadTimeRows != null ? toHours(leadTimeRows) : null;
-  const windowHours = toHours(total);
+  const faultZone  = result?.fault_zone_start_index;
+  const total      = result?.total_sampled ?? 400;
+  const leadTimeHours = result?.lead_time_hours ?? null;
+  const windowHours   = toHours(total);
   const firstAlertHours = firstAlert != null ? toHours(firstAlert) : null;
   const anomalyPct = result ? ((result.anomaly_count / result.total_sampled) * 100).toFixed(1) : null;
 
@@ -201,7 +201,7 @@ function LiveSimulation() {
           <span className="material-symbols-outlined text-base">refresh</span>
           {isLoading ? "Running…" : result ? "Run Again" : "Run Simulation"}
         </button>
-        <span className="text-xs text-slate-500">Randomly samples 150 consecutive rows from a historical anomaly event</span>
+        <span className="text-xs text-slate-500">Replays a historical fault event through the model · 10-min SCADA samples</span>
       </div>
 
       {isLoading && (
@@ -222,15 +222,15 @@ function LiveSimulation() {
           {/* KPI cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard
-              label="Lead time"
-              value={leadTimeHours != null ? fmtH(leadTimeHours) : "—"}
-              sub="before fault confirmed"
-              color={leadTimeHours != null && leadTimeHours > 2 ? "text-amber-400" : leadTimeHours != null ? "text-red-400" : "text-slate-500"}
+              label="CARE Lead Time"
+              value={leadTimeHours != null ? `${Math.round(leadTimeHours)}h` : "—"}
+              sub="advance warning before fault"
+              color={leadTimeHours != null && leadTimeHours > 48 ? "text-emerald-400" : leadTimeHours != null && leadTimeHours > 0 ? "text-amber-400" : "text-slate-500"}
             />
             <StatCard
               label="First alert at"
               value={firstAlert != null ? `Row ${firstAlert}` : "Not detected"}
-              sub={firstAlertHours != null ? `of ${total} · ${firstAlertHours.toFixed(1)}h in` : "no anomaly flagged"}
+              sub={firstAlertHours != null ? `${firstAlertHours.toFixed(1)}h into window` : "no anomaly flagged"}
               color={firstAlert != null ? "text-amber-400" : "text-slate-500"}
             />
             <StatCard
@@ -240,9 +240,9 @@ function LiveSimulation() {
               color={result.anomaly_count > 0 ? "text-red-400" : "text-slate-500"}
             />
             <StatCard
-              label="Fault confirmed at"
-              value={`Row ${total - 1}`}
-              sub={`${windowHours.toFixed(1)}h into window`}
+              label="Window length"
+              value={`${windowHours.toFixed(0)}h`}
+              sub={`${total} rows · 10-min samples`}
               color="text-slate-200"
             />
           </div>
@@ -251,22 +251,13 @@ function LiveSimulation() {
           <SimChart result={result} />
 
           {/* Interpretation */}
-          {firstAlert != null && leadTimeHours != null && (
-            <div className={`rounded-xl border p-4 text-sm flex gap-3 ${
-              leadTimeHours >= 2
-                ? "bg-amber-900/10 border-amber-700/30"
-                : "bg-red-900/10 border-red-700/30"
-            }`}>
-              <span className={`material-symbols-outlined shrink-0 ${leadTimeHours >= 2 ? "text-amber-400" : "text-red-400"}`}>
-                {leadTimeHours >= 2 ? "alarm" : "warning"}
-              </span>
+          {leadTimeHours != null && (
+            <div className={`rounded-xl border p-4 text-sm flex gap-3 ${leadTimeHours > 48 ? "bg-emerald-900/10 border-emerald-700/30" : "bg-amber-900/10 border-amber-700/30"}`}>
+              <span className={`material-symbols-outlined shrink-0 ${leadTimeHours > 48 ? "text-emerald-400" : "text-amber-400"}`}>alarm</span>
               <p className="text-slate-300 leading-relaxed">
-                Model first flagged this event at row {firstAlert} ({firstAlertHours?.toFixed(1)}h into the window),
-                giving <span className={`font-bold ${leadTimeHours >= 2 ? "text-amber-400" : "text-red-400"}`}>{fmtH(leadTimeHours)} of advance warning</span> before
-                the fault was confirmed at the end of the window.
-                {result.fault_zone_start_index != null && (
-                  <> The fault zone (non-normal operating status) began at row {result.fault_zone_start_index} ({toHours(result.fault_zone_start_index).toFixed(1)}h).</>
-                )}
+                The model provided <span className={`font-bold ${leadTimeHours > 48 ? "text-emerald-400" : "text-amber-400"}`}>{Math.round(leadTimeHours)} hours ({(leadTimeHours / 24).toFixed(1)} days) of advance warning</span> before
+                this fault was confirmed — enough time to schedule preventive maintenance and avoid unplanned downtime.
+                {firstAlert != null && <> First anomaly flag appeared at row {firstAlert} in this prediction window.</>}
               </p>
             </div>
           )}

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, KeyboardEvent } from "react";
 import { usePathname } from "next/navigation";
 import { postChat, WorkOrder } from "@/lib/api";
+import ReactMarkdown from "react-markdown";
 
 interface Message {
   role: "user" | "assistant";
@@ -167,7 +168,24 @@ export function ChatPanel() {
                     ? "bg-primary/20 text-slate-200 rounded-tr-sm"
                     : "bg-background-dark border border-border-dark text-slate-300 rounded-tl-sm"
                 }`}>
-                  {m.content}
+                  {m.role === "assistant" ? (
+                    <ReactMarkdown
+                      components={{
+                        p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
+                        strong: ({ children }) => <strong className="text-slate-100 font-bold">{children}</strong>,
+                        ul: ({ children }) => <ul className="list-disc list-inside space-y-0.5 my-1">{children}</ul>,
+                        ol: ({ children }) => <ol className="list-decimal list-inside space-y-0.5 my-1">{children}</ol>,
+                        li: ({ children }) => <li className="text-slate-300">{children}</li>,
+                        h1: ({ children }) => <p className="font-bold text-slate-100 mb-1">{children}</p>,
+                        h2: ({ children }) => <p className="font-bold text-slate-100 mb-1">{children}</p>,
+                        h3: ({ children }) => <p className="font-semibold text-slate-200 mb-0.5">{children}</p>,
+                        code: ({ children }) => <code className="font-mono bg-black/30 px-1 rounded text-primary">{children}</code>,
+                        hr: () => <hr className="border-border-dark my-2" />,
+                      }}
+                    >
+                      {m.content}
+                    </ReactMarkdown>
+                  ) : m.content}
                 </div>
                 {m.work_order && <WorkOrderCard wo={m.work_order} />}
               </div>

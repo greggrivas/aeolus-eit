@@ -380,7 +380,8 @@ async def chat(payload: ChatRequest):
                     "tool_choice": "auto",
                 },
             )
-            resp.raise_for_status()
+            if not resp.is_success:
+                raise Exception(f"OpenRouter {resp.status_code}: {resp.text}")
             data = resp.json()
             msg = data["choices"][0]["message"]
 

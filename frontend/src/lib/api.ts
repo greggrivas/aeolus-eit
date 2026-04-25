@@ -194,6 +194,7 @@ export interface SimulationResult {
   anomaly_count: number;
   first_detection_index: number | null;
   fault_zone_start_index: number | null;
+  lead_time_hours: number | null;
   points: SimulationPoint[];
 }
 

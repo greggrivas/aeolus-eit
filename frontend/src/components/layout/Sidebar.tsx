@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { clsx } from "clsx";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Dashboard", icon: "dashboard", exact: true },
   { href: "/fleet", label: "Fleet Overview", icon: "map", exact: false },
   { href: "/events", label: "Events", icon: "warning", exact: false },
   { href: "/benchmark", label: "Benchmark", icon: "query_stats", exact: false },
@@ -19,12 +19,16 @@ export function Sidebar() {
   return (
     <aside className="w-56 flex-shrink-0 bg-panel-dark border-r border-border-dark flex flex-col">
       {/* Logo */}
-      <div className="h-14 flex items-center gap-3 px-4 border-b border-border-dark">
-        <div className="size-8 bg-primary/20 rounded-lg flex items-center justify-center">
-          <span className="material-symbols-outlined text-primary text-lg">wind_power</span>
-        </div>
+      <div className="h-14 flex items-center gap-2 px-3 border-b border-border-dark">
+        <Image
+          src="/aeolus-logo.jpeg"
+          alt="Aeolus AI"
+          width={36}
+          height={36}
+          className="rounded-lg object-cover"
+        />
         <div>
-          <p className="font-bold text-sm text-slate-100 leading-tight">Aeolus</p>
+          <p className="font-bold text-sm text-slate-100 leading-tight">Aeolus <span className="text-primary">AI</span></p>
           <p className="text-[10px] text-slate-500 leading-tight">Wind Farm A</p>
         </div>
       </div>

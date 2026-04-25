@@ -20,5 +20,6 @@ class SimulationResult(BaseModel):
     total_sampled: int
     anomaly_count: int
     first_detection_index: Optional[int]
-    fault_zone_start_index: Optional[int]   # first row in sample where status_type_id != 0
+    fault_zone_start_index: Optional[int]
+    lead_time_hours: Optional[float]        # pre-computed CARE lead time for this event
     points: list[SimulationPoint]
